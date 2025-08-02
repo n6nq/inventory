@@ -1,21 +1,22 @@
 import psycopg2
+import curses
 from window import CmdWindow
 from database import Database
 
-def main():
-    win = CmdWindow()
+def main(stdscr):
+    win = CmdWindow(stdscr)
     # Print first screen
     win.set_title('Inventory program, Ver 0.01')
     win.restart()
     win.str_at(2,10, 'Press any key to continue...')
-    #win.bell()
+    win.bell()
     win.getch()
     win.clrln(2)
     win.save_loc()
 
     db = Database(win)
     win.restore_loc()
-    win.restart()
+    #win.restart()
 
     while(True):
         win.restart()
@@ -149,7 +150,7 @@ def show_something(win, db):
 def show_items(win, db):
     win.restart()
     win.str_at(2, 1, 'Showing which items?')
-    choice = win.choice_at(2, 1, ['All','Category =','Type =','Subtype =','Exit'], True)
+    choice = win.choice_at(3, 1, ['All','Category =','Type =','Subtype =','Exit'], True)
     match choice:
         case 'A':
             show_all_items(win, db)
@@ -181,39 +182,5 @@ def show_types(win, db):
 def show_subtypes(win, db):
     pass
 
-
-    
-    
-    
-    
-    pass
-
-main()
-exit()
-
-
-cur.execute("insert into category (c_name) values (%s)", ("testcat",))
-cur.execute("select max(id) from category;")
-row = cur.fetchone()
-newcat = row[0]
-print(row)
-print()
-cur.execute("insert into type (t_name, cat) values (%s, %s)", ("testtype", newcat))
-cur.execute("select max(id) from type;")
-row = cur.fetchone()
-newtype = row[0]
-print(row)
-print()
-cur.execute("insert into subtype (st_name, atype) values (%s, %s)", ("testsub", newtype))
-cur.execute("select max(id) from subtype;")
-row = cur.fetchone()
-newsubtype = row[0]
-print(row)
-print()
-cur.execute("insert into item (cat, atype, subtype, box, loc, descript) values (%s, %s, %s, %s, %s, %s)", (newcat, newtype, newsubtype, "B1", "closet", "a silly test item"))
-cur.execute("select * from item;")
-
-row = cur.fetchone()
-print(row)
-print()
-
+if __name__ == "__main__":
+    curses.wrapper(main)

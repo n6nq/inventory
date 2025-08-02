@@ -10,23 +10,23 @@ class Database():
 
         self.cur = self.conn.cursor()
 
-        self.cur.execute(
-            "select category.c_name, type.t_name, subtype.st_name, item.box, item.loc, item.descript " 
-            "from item "
-            "inner join category on item.cat = category.id "
-            "inner join type     on item.atype = type.id "
-            "inner join subtype  on item.subtype = subtype.id;")
-        for row in self.cur.fetchall():
-            self.win.putstr(repr(row) + '\n')
+        # self.cur.execute(
+        #     "select category.c_name, type.t_name, subtype.st_name, item.box, item.loc, item.descript " 
+        #     "from item "
+        #     "inner join category on item.cat = category.id "
+        #     "inner join type     on item.atype = type.id "
+        #     "inner join subtype  on item.subtype = subtype.id;")
+        # for row in self.cur.fetchall():
+        #     self.win.putstr(repr(row) + '\n')
         
-        show = True
-        self.get_categories(show)
-        self.get_types(show)
-        self.get_subtypes(show)
-        self.get_items(show)
-        if show:
-            self.win.putstr('Press any key...')
-            self.win.getch()
+        # show = True
+        # self.get_categories(show)
+        # self.get_types(show)
+        # self.get_subtypes(show)
+        # self.get_items(show)
+        # if show:
+        #     self.win.putstr('Press any key...')
+        #     self.win.getch()
 
     def add_category(self, c_name):
         self.cur.execute('insert into category (c_name) values (%s) returning id, c_name;', (c_name,))
@@ -147,3 +147,28 @@ class Database():
 
 
 
+
+# cur.execute("insert into category (c_name) values (%s)", ("testcat",))
+# cur.execute("select max(id) from category;")
+# row = cur.fetchone()
+# newcat = row[0]
+# print(row)
+# print()
+# cur.execute("insert into type (t_name, cat) values (%s, %s)", ("testtype", newcat))
+# cur.execute("select max(id) from type;")
+# row = cur.fetchone()
+# newtype = row[0]
+# print(row)
+# print()
+# cur.execute("insert into subtype (st_name, atype) values (%s, %s)", ("testsub", newtype))
+# cur.execute("select max(id) from subtype;")
+# row = cur.fetchone()
+# newsubtype = row[0]
+# print(row)
+# print()
+# cur.execute("insert into item (cat, atype, subtype, box, loc, descript) values (%s, %s, %s, %s, %s, %s)", (newcat, newtype, newsubtype, "B1", "closet", "a silly test item"))
+# cur.execute("select * from item;")
+
+# row = cur.fetchone()
+# print(row)
+print()

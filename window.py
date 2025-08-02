@@ -2,58 +2,76 @@
 # May be implemented with windows-curses later.
 import ctypes
 import sys
+import curses
 import msvcrt
 from scanf import scanf
 import time
 
 class CmdWindow:
 
-    def __init__(self):
+    def __init__(self,stdscr):
+        self.stdscr = stdscr
         self.curx = 0
         self.cury = 0
         self.title = 'Not set yet'
+        self.saved_cursor = (1,1)
         self.lasthl = (False, None, None, None, None)
-        # Initialize the command window's virtual terminal processing mode
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        mode = ctypes.c_uint()
-        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-        kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        ## Initialize the command window's virtual terminal processing mode
+        # kernel32 = ctypes.windll.kernel32
+        # handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        # mode = ctypes.c_uint()
+        # kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        # kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
 
     def bell(self):
-        self.putstr('\07')
+        curses.beep()
+        #self.putstr('\07')
 
     def choice_at(self, line, col, choices, clear):
         letters = ''
-        choicestr = ''
-        for choice in choices:
-            letters += choice[0]
-            choicestr += '\x1B[1m'+choice[0]+'\x1B[0m'+choice[1:]+' '
+        ln = line
+        cl = col
+        nchoices = len(choices)
+        choicen = 0
         if clear:
             self.clrln(line)
+
+        for choice in choices:
+            choicen += 1
+            letters += choice[0]
+            self.stdscr.addstr(ln, cl, choice[0], curses.A_BOLD)
+            rest = choice[1:]
+            if choicen != nchoices:
+                rest += ', '
+            self.stdscr.addstr(ln, cl+1, rest, curses.A_NORMAL)
+            cl += len(choice)+2
+            self.stdscr.refresh()
         
         while(True):
-            self.str_at(line, col, choicestr)
             c = self.getch().upper()
-            self.clrln(line)
             if c in letters:             
+                self.clrln(ln)
                 return c
             else:
-                self.str_at(line, col, 'Unknown choice '+c+'. Press a key to try again.')
+                self.str_at(ln+1, 1, 'Unknown choice '+c+'. Press a key to try again.')
                 self.getch()
-                self.clrln(line)
+                self.clrln(ln+1)
 
     def clear(self):
         self.putstr('\x1B[2J')
         self.lasthl = (False, None, None, None, None)
 
-    def clrln(self, y):
-        self.move(y, 1)
-        self.putstr('\x1B[0K')
+    def clrln(self, line):
+        self.stdscr.move(line, 1)
+        self.stdscr.clrtoeol()
+        self.stdscr.refresh()
+        #self.putstr('\x1B[0K')
 
     def clrtoend(self, line, col):
-        self.move(line, col)
-        self.putstr('\x1B[0J')
+        self.stdscr.move(line, col)
+        self.stdscr.clrtobot()
+        self.stdscr.refresh()
+        #self.putstr('\x1B[0J')
         self.lasthl = (False, None, None, None, None)
 
     def double_check_list(self, members, candidate, which_col):
@@ -63,24 +81,24 @@ class CmdWindow:
         return None
 
     def getch(self):
-        while msvcrt.kbhit():
-            c = msvcrt.getch()
-        c = msvcrt.getch().decode('utf-8')
+        c = self.stdscr.getch()
+        c = chr(c)
+        # while msvcrt.kbhit():
+        #     c = msvcrt.getch()
+        # c = msvcrt.getch().decode('utf-8')
         return c
 
     def getloc(self):
-        '''Disabled for now. Windows Cmd window does not reliably
-        support this function. Too bad.'''
-        #assert(False)
-        locstr = ''
-        self.putstr('\x1B[6n')
-        time.sleep(0.25)
-        while msvcrt.kbhit():
-            c = msvcrt.getch()
-            locstr += c.decode('utf-8')
-        loc = scanf('\x1B[%d;%dR', locstr)
-        if loc == None:
-            return (0, 0)
+        loc = self.stdscr.getyx()
+        # locstr = ''
+        # self.putstr('\x1B[6n')
+        # time.sleep(0.25)
+        # while msvcrt.kbhit():
+        #     c = msvcrt.getch()
+        #     locstr += c.decode('utf-8')
+        # loc = scanf('\x1B[%d;%dR', locstr)
+        # if loc == None:
+        #     return (0, 0)
         self.cury = loc[0]
         self.curx = loc[1]
         return loc
@@ -90,7 +108,7 @@ class CmdWindow:
         c = 0
         while True:
             c = self.getch()
-            if c == '\r':
+            if c == '\n':
                 return newstr
             newstr += c
             self.putstr(c)
@@ -107,7 +125,7 @@ class CmdWindow:
         self.unhighlight(mindex)
         member = members[index][mindex]
         hlchars = member[0:hlen]
-        self.str_at(startline+index, 1, '\x1B[1m'+hlchars+'\x1B[0m')
+        self.str_at(startline+index, 1, hlchars, curses.A_BOLD)
         self.lasthl = (True, members, startline, index, hlen)
         
 
@@ -117,60 +135,22 @@ class CmdWindow:
         self.putstr(seq)
 
     def putstr(self, astr):
-        print(astr, end='', flush=True)
+        self.stdscr.addstr(astr)
+        self.stdscr.refresh()
 
     def restart(self):
-        self.clear()
-        self.str_at(1,1, self.title)
-        self.lasthl = (False, None, None, None, None)
+        self.stdscr.clear()
+        self.stdscr.addstr(1,1, self.title)
+        self.stdscr.refresh()
+        self.lasthl = (False, None, None, None, None)   #TODO do we still need this
 
     def restore_loc(self):
-        self.putstr('\x1B8')
+        self.stdscr.move(self.saved_cursor[0], self.saved_cursor[1])
+        #self.putstr('\x1B8')
         
     def save_loc(self):
-        self.putstr('\x1B7')
-
-    # def select_from_list(self, startline, title, members):
-    #     # Clear the screen from startline and set the title of the list
-    #     members.append((-1, 'new '+title))
-    #     self.move(startline,1)
-    #     self.clrtoend()
-    #     self.str_at(startline,1, 'Choose a '+title+' or type \'new\'')
-    #     # Position to start of list and paint it
-    #     headline = startline
-    #     startline += 1
-    #     nextline = startline
-    #     for member in members:
-    #         self.str_at(nextline,1, member[1])
-    #         nextline += 1
-    #     # Collect user user input and search letter by letter
-    #     searchstr = ''
-    #     while True:
-    #         # Add instructions to the end of the list
-    #         self.str_at(nextline,1,'Type characters to find, Enter to select...')
-    #         c = self.getch()
-    #         if c == '\r' or c == '\t':
-    #             self.move(headline,1)
-    #             self.clrtoend()
-    #             return i
-    #         found = False
-    #         searchstr += c
-    #         for i in range(len(members)):
-    #             member = members[i][1]
-    #             # if we find a match, highlight it
-    #             if member.find(searchstr) == 0:
-    #                 found = True
-    #                 hlen = len(searchstr)
-    #                 self.high_lite_lst_mbr(members, startline, i, hlen)
-    #                 break
-    #         if not found:
-    #             self.str_at(nextline,1, searchstr + ' was not found. Try \'new\'. Type any key to try again.')
-    #             self.unhighlight()
-    #             searchstr = ''
-    #             self.getch()
-    #             self.clrln(nextline)
-          
-    #     print(searchstr)
+        self.saved_cursor = self.stdscr.getyx()
+        #self.putstr('\x1B7')
 
     def set_heading(self, title, startline):
         # Clear the screen from startline and set the title of the list
@@ -183,27 +163,39 @@ class CmdWindow:
         startline += 1
         nextline = startline
         for member in members:
-            self.str_at(nextline,1, member[mindex])
+            if mindex == -1:
+                rowstr = member[0]
+                for i in range(1,len(member)):
+                    rowstr += ', '
+                    rowstr += member[i]
+                self.str_at(nextline, 1, rowstr)
+            else:
+                self.str_at(nextline,1, member[mindex])
             nextline += 1
 
         return startline, headline, nextline
 
+    #==========================================================================================
+    # select_from_list - select from a list of choices provided by the caller or accept a new 
+    # choice provided by the user. 
+    # Inputs: 
+    # startline = The line on which to start the list, the heading is placed on the start line, 
+    # start_line is bumped by 1 when returned by paint_list
+    # title = is name of the objects in the list
+    # members = a list of objects that will be chosen from. Each member is a tuple with any number 
+    # of columns. One column or all columns can be displayed
+    # mindex = is the 0 based index of the column will be displayed and chosen from. mindex can 
+    # also carry special values to sleect special behaviors. Behaviors are implemented by paint_list. 
+    # Currently only one, -1 means display all columns. This will also affect list search matching.
+    # When a specific column has been specified, matching is always done from the first character. 
+    # When all columns are displayed, the match can occur anywhere in anycolumn.set
+
     def select_from_list(self, startline, title, members, mindex):
         # Clear the screen from startline and set the title of the list
         self.set_heading(title, startline)
-                # members.append((-1, 'new '+title))
-                # self.move(startline,1)
-                # self.clrtoend()
-                # self.str_at(startline,1, 'Choose a '+title+' or type \'new\'')
 
         # Position to start of list and paint it
         startline, headline, nextline = self.paint_list(startline, members, mindex)
-                # headline = startline
-                # startline += 1
-                # nextline = startline
-                # for member in members:
-                #     self.str_at(nextline,1, member[mindex])
-                #     nextline += 1
 
         # Collect user user input and search letter by letter
         searchstr = ''
@@ -211,7 +203,7 @@ class CmdWindow:
             # Add instructions to the end of the list
             self.str_at(nextline,1,'Type characters to find, Enter to select...')
             c = self.getch()
-            if c == '\r' or c == '\t':
+            if c == '\n' or c == '\t':
                 self.clrtoend(headline, 1)
                 return members[i]
             elif c == '\x1b':
@@ -233,7 +225,7 @@ class CmdWindow:
                 self.str_at(nextline,1, 'New '+title+'? Continue, Enter to complete, Escape to start over: '+searchstr)
                 while True:
                     c = self.getch()
-                    if c == '\r':
+                    if c == '\n':
                         self.clrtoend(headline, 1)
                         return (-1, searchstr)
                     elif c == '\x1B':
@@ -249,9 +241,11 @@ class CmdWindow:
     def set_title(self, str):
         self.title = str
 
-    def str_at(self, x, y, msg):
-        self.move(x, y)
-        self.putstr(msg)
+    def str_at(self, line, col, msg, attrib = curses.A_NORMAL):
+        self.stdscr.addstr(line, col, msg, attrib)
+        self.stdscr.refresh()
+        #self.move(x, y)
+        #self.putstr(msg)
 
     def title(self, msg):
         self.move(0, 0)
@@ -266,7 +260,7 @@ class CmdWindow:
             old_hlen = self.lasthl[4]
             member = old_members[old_index][mindex]
             hlchars = member[0:old_hlen]
-            self.str_at(old_startline+old_index, 1, '\x1B[0m'+hlchars)
+            self.str_at(old_startline+old_index, 1, hlchars, curses.A_NORMAL)
 
 
 

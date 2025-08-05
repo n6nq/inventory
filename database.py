@@ -1,4 +1,5 @@
 import psycopg2
+import cnst
 
 class Database():
     
@@ -26,7 +27,7 @@ class Database():
         # self.get_items(show)
         # if show:
         #     self.win.putstr('Press any key...')
-        #     self.win.getch()
+        #     self.win.getch(cnst.ANY)
 
     def add_category(self, c_name):
         self.cur.execute('insert into category (c_name) values (%s) returning id, c_name;', (c_name,))

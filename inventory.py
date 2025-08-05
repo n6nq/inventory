@@ -2,16 +2,17 @@ import psycopg2
 import curses
 from window import CmdWindow
 from database import Database
+import cnst
 
 def main(stdscr):
     win = CmdWindow(stdscr)
     # Print first screen
     win.set_title('Inventory program, Ver 0.01')
     win.restart()
-    win.str_at(2,10, 'Press any key to continue...')
     win.bell()
-    win.getch()
-    win.clrln(2)
+    win.prompt('Press any key to continue...')
+    win.getch(cnst.ANY)
+    win.clrln(win.prompt_line)
     win.save_loc()
 
     db = Database(win)
@@ -20,7 +21,7 @@ def main(stdscr):
 
     while(True):
         win.restart()
-        choice = win.choice_at(2, 1, ['New','Find','Show','Delete','Exit'], True)
+        choice = win.choice_at(win.prompt_line, 1, ['New','Find','Show','Delete','Exit'], True)
 
         match choice:
             case 'N':
@@ -38,14 +39,13 @@ def main(stdscr):
 
 def new_item(win, db):
     # Paint the item line
+    win.item_choice_str('Item: ')
     item_at = win.getloc()
-    win.str_at(item_at[0], 1, 'Item: ')
-    item_at = win.getloc()
-    choice_line = item_at[0] + 1
+    #choice_line = item_at[0] + 1
 
     # Get an existing or new category
     cats = db.get_categories()
-    selected_cat = win.select_from_list(choice_line, 'Category', cats, 1)
+    selected_cat = win.select_from_list('Category', cats, 1)
     if selected_cat[0] == -1:
         newcatname = selected_cat[1]
         selected_cat = db.add_category(newcatname)
@@ -57,7 +57,7 @@ def new_item(win, db):
 
     # Get an existing or new type
     types = db.get_types_for(cat_id)
-    selected_type = win.select_from_list(choice_line, 'Type', types, 1)
+    selected_type = win.select_from_list('Type', types, 1)
     if selected_type[0] == -1:
         newtypename = selected_type[1]
         selected_type = db.add_type(newtypename, cat_id)
@@ -69,7 +69,7 @@ def new_item(win, db):
 
     # Get an existing or new subtype
     subtypes = db.get_subtypes_for(type_id)
-    selected_stype = win.select_from_list(choice_line, 'subtype', subtypes, 1)
+    selected_stype = win.select_from_list('subtype', subtypes, 1)
     if selected_stype[0] == -1:
         newsubtypename = selected_stype[1]
         selected_stype = db.add_subtype(newsubtypename, type_id)
@@ -81,7 +81,7 @@ def new_item(win, db):
 
     # Get Box id
     letters = db.get_box_letters()
-    selected_letter = win.select_from_list(choice_line, 'letter', letters, 0)
+    selected_letter = win.select_from_list('letter', letters, 0)
     if selected_letter[0] == -1:
         newletter = selected_letter[1][0].upper()
         newnumber = '1'
@@ -90,7 +90,7 @@ def new_item(win, db):
     else:
         newletter = selected_letter[0]
         numbers = db.get_box_numbers(selected_letter[0])
-        selected_number = win.select_from_list(choice_line, 'number', numbers, 0)
+        selected_number = win.select_from_list('number', numbers, 0)
         if selected_number[0] == -1:
             newnumber = selected_number[1]
         elif selected_number[0] == -2:                     # todo
@@ -101,9 +101,9 @@ def new_item(win, db):
     win.str_at(item_at[0], item_at[1], boxid+', ')
     item_at = win.getloc()
 
-    # Get boxes location
+    # Get box location
     locations = db.get_locations()
-    selected_location = win.select_from_list(choice_line, 'location',locations, 0)
+    selected_location = win.select_from_list('location',locations, 0)
     if selected_location[0] == -1:
         loc = selected_location[1]
     else:
@@ -131,7 +131,7 @@ def delete_something(win, db):
 def show_something(win, db):
     win.restart()
     win.str_at(2, 1, 'Showing which?:')
-    choice = win.choice_at(2, 1, ['Items','Categories','Types','Subtypes','Return'], True)
+    choice = win.choice_at(2, 1, ['Items','Categories','Types','Subtypes','ListTest2', 'Return'], True)
     match choice:
         case 'I':
             show_items(win, db)
@@ -141,6 +141,8 @@ def show_something(win, db):
             show_types(win, db)
         case 'S':
             show_subtypes(win, db)
+        case 'L':
+            win.select_from_list2()
         case 'R':
             return
         case _:

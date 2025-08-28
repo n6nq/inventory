@@ -1,6 +1,6 @@
 # cnst.py -- Text filtering constants
 
-from sre_constants import ANY
+from pickle import OBJ
 
 
 ALL = 511       # All is all below expect any
@@ -13,4 +13,12 @@ DOWN = 32       # down is KEY_DOWN or KEY_C2
 LEFT = 64       # left is KEY_LEFT or KEY_B1
 RIGHT = 128     # right is KEY_RIGHT or KEy_B3
 CTRL_A = 256    # ctrl_a is \x01
-ANY  = 512
+NUMBER = 512       # number is \d
+SPACE = 1024
+ANY  = 2048
+
+NEWOBJ  = -1    # if id col is -1, it is a new object that is not in the database yet.
+ESCAPED  = -2   # if id col is -2, no object was selected
+
+OBJID   = 0
+OBJNAME = 1

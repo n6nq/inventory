@@ -25,9 +25,9 @@ def main(stdscr):
 
         match choice:
             case 'N':
-                new_item(win, db)
+                new_item(win, db)   #TODO add escape path to this function
             case 'F':
-                find_something(win, db)
+                find_something(win, db)     #TODO implement this function
             case 'D':
                 delete_something(win, db)
             case 'S':
@@ -37,6 +37,14 @@ def main(stdscr):
             case _:
                 print('handle_not_choice')
 
+def list_obj_is_new(obj):
+    assert(len(obj) >= 1)
+    return obj[0] == cnst.NEWOBJ
+
+def list_obj_is_escaped(obj):
+    assert(len(obj) >= 1)
+    return obj[0] == cnst.ESCAPED
+
 def new_item(win, db):
     # Paint the item line
     win.item_choice_str('Item: ')
@@ -45,31 +53,37 @@ def new_item(win, db):
 
     # Get an existing or new category
     cats = db.get_categories()
-    selected_cat = win.select_from_list('Category', cats, 1)
-    if selected_cat[0] == -1:
+    selected_cat = win.select_from_list(cats, 1, 'Category') 
+
+    if list_obj_is_new(selected_cat):
         newcatname = selected_cat[1]
         selected_cat = db.add_category(newcatname)
-    elif selected_cat[0] == -2:                     # todo
+
+    elif list_obj_is_escaped(selected_cat):                     # todo
         return
+    
     cat_id = selected_cat[0]
     win.str_at(item_at[0], item_at[1], selected_cat[1]+', ')
     item_at = win.getloc()
 
     # Get an existing or new type
     types = db.get_types_for(cat_id)
-    selected_type = win.select_from_list('Type', types, 1)
-    if selected_type[0] == -1:
+    selected_type = win.select_from_list(types, 1, 'Type')  
+    
+    if list_obj_is_new(selected_type):
         newtypename = selected_type[1]
         selected_type = db.add_type(newtypename, cat_id)
-    elif selected_type[0] == -2:                     # todo
+
+    elif list_obj_is_escaped(selected_type):                     # todo
         return
+
     type_id = selected_type[0]
     win.str_at(item_at[0], item_at[1], selected_type[1]+', ')
     item_at = win.getloc()
 
     # Get an existing or new subtype
     subtypes = db.get_subtypes_for(type_id)
-    selected_stype = win.select_from_list('subtype', subtypes, 1)
+    selected_stype = win.select_from_list(subtypes, 1, 'subtype')
     if selected_stype[0] == -1:
         newsubtypename = selected_stype[1]
         selected_stype = db.add_subtype(newsubtypename, type_id)
@@ -81,7 +95,7 @@ def new_item(win, db):
 
     # Get Box id
     letters = db.get_box_letters()
-    selected_letter = win.select_from_list('letter', letters, 0)
+    selected_letter = win.select_from_list(letters, 0, 'box letter')
     if selected_letter[0] == -1:
         newletter = selected_letter[1][0].upper()
         newnumber = '1'
@@ -90,7 +104,7 @@ def new_item(win, db):
     else:
         newletter = selected_letter[0]
         numbers = db.get_box_numbers(selected_letter[0])
-        selected_number = win.select_from_list('number', numbers, 0)
+        selected_number = win.select_from_list(numbers, 0, 'box number')
         if selected_number[0] == -1:
             newnumber = selected_number[1]
         elif selected_number[0] == -2:                     # todo
@@ -103,7 +117,7 @@ def new_item(win, db):
 
     # Get box location
     locations = db.get_locations()
-    selected_location = win.select_from_list('location',locations, 0)
+    selected_location = win.select_from_list(locations, 0, 'location')
     if selected_location[0] == -1:
         loc = selected_location[1]
     else:
@@ -112,7 +126,7 @@ def new_item(win, db):
     item_at = win.getloc()
 
     # Get item description
-    descript = win.getstr_at(choice_line, 1, 'Enter item description')
+    descript = win.getstr_at(win.description_line, 1, 'Enter item description') #TODO add edit ability to this function
     win.str_at(item_at[0], item_at[1], descript+', ')
     item_at = win.getloc()
 
@@ -131,7 +145,7 @@ def delete_something(win, db):
 def show_something(win, db):
     win.restart()
     win.str_at(2, 1, 'Showing which?:')
-    choice = win.choice_at(2, 1, ['Items','Categories','Types','Subtypes','ListTest2', 'Return'], True)
+    choice = win.choice_at(win.prompt_line, 1, ['Items','Categories','Types','Subtypes','ListTest2', 'Return'], True)
     match choice:
         case 'I':
             show_items(win, db)
@@ -142,7 +156,7 @@ def show_something(win, db):
         case 'S':
             show_subtypes(win, db)
         case 'L':
-            win.select_from_list2()
+            win.select_from_list3()
         case 'R':
             return
         case _:
@@ -171,7 +185,9 @@ def show_all_items(win, db):
     win.restart()
     win.str_at(2, 1, 'Showing all items:')
     items = db.get_joined_items()
-    selected_item = win.select_from_list(3, 'item',items, -1)
+    win.select_from_list(items, -1, "All Items:")
+    #selected_item = win.select_from_list(items, -1, 'items:')
+    #todo what todo with selected item
 
 def show_categories(win, db):
     pass

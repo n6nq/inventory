@@ -87,7 +87,7 @@ class Database():
     def get_joined_items(self, show=False):
         if show:
             self.win.putstr('id, cat, atype, subtype, box, loc, descript\n')
-        self.cur.execute('select category.c_name, type.t_name, subtype.st_name, box, loc, descript from item '
+        self.cur.execute('select item.id, category.c_name, type.t_name, subtype.st_name, box, loc, descript from item '
 	                     '  join category on item.cat = category.id '
 	                     '  join type on item.atype = type.id '
 	                     '  join subtype on item.subtype = subtype.id '

@@ -17,19 +17,12 @@ class CmdWindow:
         self.saved_cursor = (1,1)
         self.stdscr.clear()
         self.t_line = 0
-        self.choice_line = 1
+        self.what_line = 1
         self.item_line = 1
         self.list_header_line = 2
         self.description_line = 2
-        self.list_start_line = 3
         self.prompt_line = curses.LINES - 1
         self.lasthl = (False, None, None, None, None)
-        ## Initialize the command window's virtual terminal processing mode
-        # kernel32 = ctypes.windll.kernel32
-        # handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        # mode = ctypes.c_uint()
-        # kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-        # kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
 
     def bell(self):
        curses.beep()
@@ -37,33 +30,45 @@ class CmdWindow:
 
     def choice_at(self, line, col, choices, clear):
         letters = ''
-        ln = line
-        cl = col
         nchoices = len(choices)
         choicen = 0
         if clear:
             self.clrln(line)
 
+        self.str_at(line, col, "Choose one: ")
+        ncol = self.getloc()[1]   #[1] picks off the col from a location which (y, x) or (line, col)
+
         for choice in choices:
+            amp_at = choice.find('&')
+            if amp_at == -1:
+                self.str_at(line, col, 'A choice string does not have an &! ' + repr(choices) + ' Any key to exit.')
+                self.getch(cnst.ANY)
+                exit()
+            first = choice[0:amp_at]
+            boldChar = choice[amp_at+1]
+            rest = choice[amp_at+2:]
+
             choicen += 1
-            letters += choice[0]
-            self.stdscr.addstr(ln, cl, choice[0], curses.A_BOLD)
-            rest = choice[1:]
+            letters += boldChar
+
+            self.str_at(line, ncol, first, curses.A_NORMAL)
+            ncol += len(first)
+            self.str_at(line, ncol, boldChar, curses.A_BOLD)
+            ncol += 1
             if choicen != nchoices:
                 rest += ', '
-            self.stdscr.addstr(ln, cl+1, rest, curses.A_NORMAL)
-            cl += len(choice)+2
-            self.stdscr.refresh()
-        
+            self.str_at(line, ncol, rest, curses.A_NORMAL)
+            ncol += len(rest)
+
         while(True):
             c = self.getch(cnst.A_Z).upper()
             if c in letters:             
-                self.clrln(ln)
+                self.clrln(line)
                 return c
             else:
-                self.str_at(ln+1, 1, 'Unknown choice '+c+'. Press a key to try again.')
+                self.str_at(line-1, 1, 'Unknown choice '+c+'. Press a key to try again.')
                 self.getch(cnst.ANY)
-                self.clrln(ln+1)
+                self.clrln(line-1)
 
     def clear(self):
         self.putstr('\x1B[2J')
@@ -113,7 +118,7 @@ class CmdWindow:
                 return key
             elif which & cnst.RIGHT and key == 'KEY_RIGHT' or key == 'KEY_B3':
                 return key
-            elif which & cnst.CTRL_A and key == '\x01':
+            elif which & cnst.PRINTABLE and key.isprintable():
                 return key
             else:
                 self.bell()
@@ -140,6 +145,8 @@ class CmdWindow:
             c = self.getch(cnst.NL | cnst.A_Z | cnst.NUMBER | cnst.SPACE)
             if c == '\n':
                 return newstr
+            if c == '\x1b':
+                return None
             newstr += c
             self.putstr(c)
 
@@ -154,7 +161,7 @@ class CmdWindow:
     def item_choice_str(self, str):
         self.clrtoend(self.item_line, 1)
         self.str_at(self.item_line, 1, str)
-        self.stdscr.refresh()
+        self.stdscr.refresh()                   #TODO redundant
 
     def high_lite_lst_mbr(self, members, startline, index, mindex, hlen):
         self.unhighlight(mindex)
@@ -165,7 +172,6 @@ class CmdWindow:
         
 
     def move(self, y, x):
-
         seq = '\x1B[' + repr(y) + ';' + repr(x) + 'H'
         self.putstr(seq)
 
@@ -180,7 +186,7 @@ class CmdWindow:
 
     def restart(self):
         self.stdscr.clear()
-        self.stdscr.addstr(self.t_line,1, self.title)
+        self.str_at(self.t_line,1, self.title)
         self.stdscr.refresh()
         self.lasthl = (False, None, None, None, None)   #TODO do we still need this
 
@@ -198,23 +204,6 @@ class CmdWindow:
         self.clrtoend(self.list_header_line, 1)
         self.str_at(self.list_header_line,1, 'Choose a '+title)
 
-    def q(self, members, mindex):
-        nextline = self.list_start_line
-        for member in members:
-            if mindex == -1:
-                rowstr = member[0]
-                if type(rowstr) == int:
-                    rowstr = str(rowstr)
-                for i in range(1,len(member)):
-                    rowstr += ', '
-                    rowstr += member[i]
-                self.str_at(nextline, 1, rowstr)
-            else:
-                self.str_at(nextline, 1, member[mindex])
-            nextline += 1
-
-        return nextline
-
     #==========================================================================================
     # select_from_list - select from a list of choices provided by the caller or accept a new 
     # choice provided by the user. 
@@ -229,124 +218,8 @@ class CmdWindow:
     # Currently only one, -1 means display all columns. This will also affect list search matching.
     # When a specific column has been specified, matching is always done from the first character. 
     # When all columns are displayed, the match can occur anywhere in anycolumn.set
-
-    def select_from_list_old(self, title, members, mindex):
-        i = -1                          # Nothing is selected yet
-        self.set_list_heading(title)    # Clear the screen from startline and set the title of the list
-
-        # Position to start of list and paint it
-        nextline = self.paint_list(members, mindex)
-
-        # Collect user user input and search letter by letter
-        searchstr = ''
-        while True:
-            # Add instructions to the end of the list
-            self.str_at(nextline,1,'Type characters to find, Enter to select...')  #TODO   add instructions to the last line
-            
-            c = self.getch(cnst.A_Z | cnst.NUMBER | cnst.NL | cnst.ESC)
-
-            if c == '\n' or c == '\t':
-                self.clrtoend(self.list_header_line, 1)
-                return members[i]
-            
-            elif c == '\x1b':
-                self.clrtoend(self.list_header_line, 1)
-                return (cnst.ESCAPED, 'Escaped')
-
-            found = False
-            searchstr += c.upper()
-            for i in range(len(members)):
-                member = members[i][mindex].upper()
-                # if we find a match, highlight it
-                if member.find(searchstr) == 0:
-                    found = True
-                    hlen = len(searchstr)
-                    self.high_lite_lst_mbr(members, self.list_start_line, i, mindex, hlen)  #todo need to cover column we are searching
-                    break
-            if not found:
-                self.unhighlight(mindex)
-                searchstr = searchstr.lower()
-                self.str_at(nextline,1, 'New '+title+'? Continue, Enter to complete, Escape to start over: '+searchstr)
-                while True:
-                    c = self.getch(cnst.A_Z | cnst.NL | cnst.ESC)
-                    if c == '\n':
-                        self.clrtoend(self.list_header_line, 1)
-                        return (cnst.NEWOBJ, searchstr)
-                    elif c == '\x1B':
-                        self.clrln(nextline)
-                        searchstr = ''
-                        break
-                    self.putstr(c)
-                    searchstr += c
-
-    #                    (self, startline, title, members, mindex)
-    def select_from_list2(self):
-        # Sample data
-        items = [f"{chr(64+i)}Item {i}" for i in range(1, 31)]  # 30 items
-        selected = 0
-        start_idx = 0
-        max_lines = curses.LINES - 2
-
-        curses.curs_set(1)      #set visibility 0= invis, 1=normal, 2=very
-        self.stdscr.keypad(True)     #true= interpret keys
-
-        searchstr = ''
-        while True:
-            self.stdscr.clear()
-            self.stdscr.addstr(0, 0, "Use ↑ ↓ to scroll, 'q' to quit")
-
-            # Calculate and display visible slice
-            end_idx = min(start_idx + max_lines, len(items))
-            for idx, item in enumerate(items[start_idx:end_idx]):
-                line = idx + 1
-                try:
-                    if start_idx + idx == selected:
-                        self.stdscr.addstr(line, 0, f"> {item}", curses.A_REVERSE)
-                    else:
-                        self.stdscr.addstr(line, 0, f"  {item}")
-                except curses.error:        # this covers the bogus error caused by the resize() hack.
-                    continue                # see the pypi page for windows-curses module
-            self.stdscr.refresh()
-            key = self.stdscr.getkey()
-
-            key = key.upper()
-
-            if key == '\x08' or key == 'KEY_LEFT':
-                searchstr = searchstr[:-1]      #remove last character
-
-            if len(key) == 1 and key >= 'A' and key <= 'Z':
-                searchstr += key
-                for i in range(len(items)):
-                    item = items[i].upper()
-                    if item.find(searchstr) == 0:
-                        selected = i 
-                        break
-                else:
-                    searchstr = ''
-                    self.bell()
-            else:
-                searchstr = ''
-
-            if key == 'x1B':
-                break
-            elif key == 'KEY_RESIZE':
-                max_lines, max_cols = self.stdscr.getmaxyx()
-                max_lines -= 1
-            elif key == 'KEY_DOWN' and selected < len(items) - 1:
-                selected += 1
-                if selected >= start_idx + max_lines:
-                    start_idx += 1
-            elif key == 'KEY_UP' and selected > 0:
-                selected -= 1
-
-            if selected < start_idx:
-                    start_idx -= 1
-
-            self.stdscr.refresh()
-            print(f"key: {key} si: {start_idx} ei: {end_idx} ml: {max_lines} sel: {selected}")
-
-##################################
-    def select_from_list(self, tuple_list, display_index, list_header):
+ 
+    def select_from_list(self, tuple_list, display_index, preselect, list_header, header_at, new_allowed):
         """
         Displays a scrollable, selectable list of tuples in the terminal using curses.
         Highlights the current selection with a '>' marker. If display_index == -1,
@@ -357,9 +230,27 @@ class CmdWindow:
         curses.curs_set(0)
         self.stdscr.keypad(True)
         height, width = self.stdscr.getmaxyx()
-        max_list_lines = height - 3  # Title + header + input line
+        max_list_lines = height - (header_at + 1 + 1)  # Header_at + 1(zero base) + input line
+        if type(preselect) is int:
+            for i in range(0,len(tuple_list)):
+                if tuple_list[i][0] == preselect:
+                    selected_index = i
+                    break
+            else:
+                selected_index = 0
+        elif type(preselect) is str:
+            selected_index = -1
+            for i in range(0, len(tuple_list)):
+                row = tuple_list[i]
+                for j in range(0, len(row)):
+                    if type(row[j]) is str and row[j] == preselect:
+                        selected_index = i
+                        break
+                if selected_index >= 0:
+                    break
+            else:
+                selected_index = 0
 
-        selected_index = 0
         scroll_pos = 0
         search_buffer = ""
         search_direction = None
@@ -368,19 +259,19 @@ class CmdWindow:
 
 
         while True:
-            self.stdscr.clear()
+            self.clrtoend(header_at, 1)
 
             # Title and header
-            self.stdscr.addstr(0, 2, self.title[:width-4], curses.A_BOLD)
-            self.stdscr.addstr(1, 2, list_header[:width-4], curses.A_UNDERLINE)
+            #self.str_at(0, 2, self.title[:width-4], curses.A_BOLD)
+            self.str_at(header_at, 2, list_header[:width-4], curses.A_BOLD)
 
             # Determine visible range
             visible_items = tuple_list[scroll_pos:scroll_pos + max_list_lines]
 
-            #self.stdscr.addstr(height - 2, 2, f"Selected index: {selected_index}, Scroll pos: {scroll_pos}"[:width-4])
+            #self.str_at(height - 2, 2, f"Selected index: {selected_index}, Scroll pos: {scroll_pos}"[:width-4])
 
             for i, item in enumerate(visible_items):
-                y = i + 2
+                y = i + header_at + 1           # list starts on the next line after the header
                 actual_index = scroll_pos + i
 
                 if display_index == -1:
@@ -421,21 +312,21 @@ class CmdWindow:
                         after = display_text[match_start + len(query):]
 
                         x = 2
-                        self.stdscr.addstr(y, x, prefix)
+                        self.str_at(y, x, prefix)
                         x += len(prefix)
-                        self.stdscr.addstr(y, x, before[:width - x - 1])
+                        self.str_at(y, x, before[:width - x - 1])
                         x += len(before)
-                        self.stdscr.addstr(y, x, match[:width - x - 1], curses.A_REVERSE)
+                        self.str_at(y, x, match[:width - x - 1], curses.A_REVERSE)
                         x += len(match)
-                        self.stdscr.addstr(y, x, after[:width - x - 1])
+                        self.str_at(y, x, after[:width - x - 1])
                     else:
-                        self.stdscr.addstr(y, 2, (prefix + display_text)[:width-4])
+                        self.str_at(y, 2, (prefix + display_text)[:width-4])
                 else:
-                    self.stdscr.addstr(y, 2, (prefix + display_text)[:width-4])
+                    self.str_at(y, 2, (prefix + display_text)[:width-4])
 
             # Input prompt
             input_prompt = f"Search: {search_buffer}  (↑↓ to scroll, F3=Next, F2=Prev, Enter=Select, ESC=Cancel)"
-            self.stdscr.addstr(height - 1, 2, input_prompt[:width-4])
+            self.str_at(self.prompt_line, 2, input_prompt[:width-4])
 
             self.stdscr.refresh()
 
@@ -458,15 +349,20 @@ class CmdWindow:
                         scroll_pos += 1
 
             elif key in (ord('\n'), curses.KEY_ENTER):
+                if len(tuple_list) == 0:
+                    return None
                 return tuple_list[selected_index]
 
-            elif key in (ord('q'), ord('Q'), 27):  # Q or q
+            elif key  == 27:  # Q or q or ESC
                 return None
 
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 search_buffer = search_buffer[:-1]
 
-            elif 32 <= key <= 126:  # Printable ASCII
+            elif 33 <= key <= 126:  # Printable ASCII
+                if len(tuple_list) == 0:
+                    return None
+
                 search_buffer += chr(key)
 
                 query = search_buffer.lower()
@@ -511,18 +407,30 @@ class CmdWindow:
                             scroll_pos = selected_index - max_list_lines + 1
 
                     else:
-                        self.str_at(height-2,2, 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
-                        while True:
-                            c = self.getch(cnst.A_Z | cnst.NL | cnst.ESC)
-                            if c == '\n':
-                                self.clrtoend(self.list_header_line, 1)
-                                return (cnst.NEWOBJ, search_buffer)
-                            elif c == '\x1B':
-                                self.clrln(nextline)
-                                searchstr = ''
-                                break
-                            self.putstr(c)
-                            search_buffer += c
+                        self.clrtoend(header_at, 1)
+                        if not new_allowed:
+                            self.str_at(self.prompt_line, 1, 'New '+list_header+' are not allowed when searching? Escape to select existing '+ list_header+'.')
+                            while True:
+                                c = self.getch(cnst.ESC)
+                                if c == '\x1B':
+                                    self.clrln(height-2)    #todo  nothing there, not needed.
+                                    search_buffer = ''
+                                    break
+                                else:
+                                    self.beep()
+                        else:
+                            self.str_at(self.prompt_line, 1, 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
+                            while True:
+                                c = self.getch(cnst.PRINTABLE | cnst.NL | cnst.ESC)
+                                if c == '\n':
+                                    self.clrtoend(header_at, 1)
+                                    return (cnst.NEWOBJ, search_buffer)
+                                elif c == '\x1B':
+                                    self.clrln(height-2)
+                                    search_buffer = ''
+                                    break
+                                self.putstr(c)
+                                search_buffer += c
 
 
             elif key == curses.KEY_F3:
@@ -583,7 +491,7 @@ class CmdWindow:
 
             elif key in (ord('q'), ord('Q')):
                 return None
-############################
+
 
     def set_title(self, str):
         self.title = str

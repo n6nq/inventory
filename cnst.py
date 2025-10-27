@@ -31,3 +31,6 @@ SUB = 3
 BOX = 4
 LOC = 5
 DESC = 6
+
+# characters
+ESCAPE = '\x1b'

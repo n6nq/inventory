@@ -18,10 +18,6 @@ def main(stdscr):
     # Print first screen
     win.set_title('Inventory program, Ver 0.01')
     win.restart()
-    #win.bell()
-    #win.prompt('Press any key to continue...')
-    #win.getch(cnst.ANY)
-    #win.clrln(win.prompt_line)
     win.save_loc()
 
     db = Database(win)
@@ -50,6 +46,8 @@ def main(stdscr):
                 show_something(win, db)
             case 'E':
                 exit()
+            case cnst.ESCAPE:
+                pass
             case _:
                 try_again(win, db)
 
@@ -64,6 +62,7 @@ def list_obj_is_new(obj):
     return obj[0] == cnst.NEWOBJ
 
 def new_item(win, db):
+    empty = tuple()
     # Paint the item line
     win.item_choice_str('Item: ')
     item_at = win.getloc()
@@ -74,7 +73,7 @@ def new_item(win, db):
     selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.list_header_line, True) 
 
     if selected_cat == None:
-        return
+        return empty
 
     if list_obj_is_new(selected_cat):
         newcatname = selected_cat[1]
@@ -90,7 +89,7 @@ def new_item(win, db):
     selected_type = win.select_from_list(types, 1, 0, 'Type', win.list_header_line, True)  
     
     if selected_type == None:
-        return
+        return empty
 
     if list_obj_is_new(selected_type):
         newtypename = selected_type[1]
@@ -105,7 +104,7 @@ def new_item(win, db):
     selected_stype = win.select_from_list(subtypes, 1, 0, 'subtype', win.list_header_line, True)
 
     if selected_stype == None:
-        return
+        return empty
 
     if list_obj_is_new(selected_stype):
         newsubtypename = selected_stype[1]
@@ -120,7 +119,7 @@ def new_item(win, db):
     selected_letter = win.select_from_list(letters, 0, 0, 'box letter', win.list_header_line, True)
 
     if selected_letter == None:
-        return
+        return empty
 
     if list_obj_is_new(selected_letter):
         newletter = selected_letter[1][0].upper()
@@ -131,7 +130,7 @@ def new_item(win, db):
         selected_number = win.select_from_list(numbers, 0, 0, 'box number', win.list_header_line, True)
 
         if selected_number == None:
-            return
+            return empty
         if list_obj_is_new(selected_number):
             newnumber = selected_number[1]
         else:
@@ -145,7 +144,7 @@ def new_item(win, db):
     selected_location = win.select_from_list(locations, 0, 0, 'location', win.list_header_line, True)
 
     if selected_location == None:
-        return
+        return empty
     if list_obj_is_new(selected_location):
         loc = selected_location[1]
     else:
@@ -184,7 +183,7 @@ def find_item(win, db):
                 return find_item_by_cat_type_sub(win, db)
             case 'V':
                 return find_by_str_value(win, db)
-            case 'R':
+            case 'R' | cnst.ESCAPE:
                 return None
             case _:
                 try_again(win, db)
@@ -279,7 +278,7 @@ def update_something(win, db):
             update_type(win, db)
         case 'S':
             update_subtype(win, db)
-        case 'R':
+        case 'R' | cnst.ESCAPE:
             return
         case _:
            try_again(win, db)
@@ -296,7 +295,7 @@ def get_column(row, col):
 
 def update_item(win, db):
     global current_item
-    if current_item == None:
+    if current_item == None or len(current_item) == 0:
         win.restart()
         win.str_at(win.what_line, 1, 'You need to select a current_item first. See the "Find" choice.')
     else:
@@ -542,7 +541,7 @@ def update_subtype(win, db):
 
     subtypes = db.get_subtypes()
     win.str_at(uline,1,'Update which SubType?')
-    selected_subtype = win.select_from_list(subtypes, 1, 0, 'Categories', lline, False)
+    selected_subtype = win.select_from_list(subtypes, 1, 0, 'SubTypes', lline, False)
 
     if selected_subtype == None:
         return
@@ -568,7 +567,7 @@ def delete_something(win, db):
             delete_type(win, db)
         case 'S':
             delete_subtype(win, db)
-        case 'R':
+        case 'R' | cnst.ESCAPE:
             return
         case _:
            try_again(win, db)
@@ -626,19 +625,20 @@ def delete_subtype(win, db):
     return None
 
 def new_something(win, db):
+    global current_item
     win.restart()
     win.str_at(win.what_line, 1, 'A new which?:')
     choice = win.choice_at(win.prompt_line, 1, ['&Item','&Category','&Type','&Subtype', '&Return'], True)
     match choice:
         case 'I':
-            new_item(win, db)
+            current_item = new_item(win, db)
         case 'C':
             new_category(win, db)
         case 'T':
             new_type(win, db)
         case 'S':
             new_subtype(win, db)
-        case 'R':
+        case 'R' | cnst.ESCAPE:
             return
         case _:
            try_again(win, db)
@@ -659,7 +659,7 @@ def new_category(win, db):
 def new_type(win, db):
     cats = db.get_categories()
     win.str_at(win.what_line,1,"A new Type must belong to an existing Category. Please select")
-    win.str_at(win.what_line+1,1, "the new type'bimbos parent from the existing list.")
+    win.str_at(win.what_line+1,1, "the new type's parent from the existing list.")
     selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.what_line+2, False) 
 
     if selected_cat == None:
@@ -718,7 +718,7 @@ def show_something(win, db):
             show_types(win, db)
         case 'S':
             show_subtypes(win, db)
-        case 'R':
+        case 'R' | cnst.ESCAPE:
             return
         case _:
            try_again(win, db)
@@ -738,7 +738,7 @@ def show_items(win, db):
             current_item = show_items_where_type_eq(win, db)
         case 'S':
             current_item = show_items_where_subtype_eq(win, db)
-        case 'R':
+        case 'R' | cnst.ESCAPE:
             return
         case _:
             try_again(win, db)

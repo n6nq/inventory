@@ -59,10 +59,11 @@ class CmdWindow:
                 rest += ', '
             self.str_at(line, ncol, rest, curses.A_NORMAL)
             ncol += len(rest)
+        self.str_at(line, ncol, ', Esc', curses.A_NORMAL)
 
         while(True):
-            c = self.getch(cnst.A_Z).upper()
-            if c in letters:             
+            c = self.getch(cnst.A_Z | cnst.ESC).upper()
+            if c in letters or c == cnst.ESCAPE:             
                 self.clrln(line)
                 return c
             else:
@@ -360,21 +361,21 @@ class CmdWindow:
                 search_buffer = search_buffer[:-1]
 
             elif 33 <= key <= 126:  # Printable ASCII
-                if len(tuple_list) == 0:
-                    return None
+                #if len(tuple_list) == 0:
+                #    return None
 
                 search_buffer += chr(key)
 
                 query = search_buffer.lower()
 
                 # Check if current selection still matches
-                if display_index == -1:
-                    current_text = ", ".join(str(x) for x in tuple_list[selected_index])
-                else:
-                    try:
+                try:
+                    if display_index == -1:
+                        current_text = ", ".join(str(x) for x in tuple_list[selected_index])
+                    else:
                         current_text = str(tuple_list[selected_index][display_index])
-                    except IndexError:
-                        current_text = ""
+                except IndexError:
+                    current_text = ""
 
                 if query not in current_text.lower():
                     # Search forward from next index

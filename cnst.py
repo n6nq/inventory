@@ -15,7 +15,8 @@ RIGHT = 128     # right is KEY_RIGHT or KEy_B3
 PRINTABLE = 256    # ctrl_a is \x01
 NUMBER = 512       # number is \d
 SPACE = 1024
-ANY  = 2048
+BS = 2048
+ANY  = 4096
 
 NEWOBJ  = -1    # if id col is -1, it is a new object that is not in the database yet.
 #ESCAPED  = -2   # if id col is -2, no object was selected  obsolete
@@ -34,3 +35,4 @@ DESC = 6
 
 # characters
 ESCAPE = '\x1b'
+BACKSPACE = '\x08'

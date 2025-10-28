@@ -60,7 +60,7 @@ class Database():
             row = self.cur.fetchone()
         except psycopg2.Error as e:
             self.handleDBError(e)
-        sself.win.str_at(self.win.prompt_line,1,'Added item with id: ' + str(row[0]))
+        self.win.str_at(self.win.prompt_line,1,'Added item with id: ' + str(row[0]))
         return row
 
     def add_type(self, t_name, cat_id):

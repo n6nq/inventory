@@ -326,6 +326,9 @@ def update_item(win, db):
             #orig_at = win.getloc()  #deprecated
             #item_at = orig_at       #deprecated
 
+            if choice == 'R' or choice == cnst.ESCAPE:
+                return
+
             if choice == 'C':
                 cats = db.get_categories()
                 selected_cat = win.select_from_list(cats, 1, get_column(new_item, 1), 'Category', lline, True) 

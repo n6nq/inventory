@@ -121,6 +121,8 @@ class CmdWindow:
                 return key
             elif which & cnst.PRINTABLE and key.isprintable():
                 return key
+            elif which & cnst.BS and key == '\x08':
+                return key
             else:
                 self.bell()
 
@@ -140,14 +142,21 @@ class CmdWindow:
         return loc
 
     def getstr(self):
+        loc = self.getloc()
         newstr = ''
         c = 0
         while True:
-            c = self.getch(cnst.NL | cnst.A_Z | cnst.NUMBER | cnst.SPACE)
+            c = self.getch(cnst.NL | cnst.BS | cnst.PRINTABLE | cnst.SPACE)
             if c == '\n':
                 return newstr
-            if c == '\x1b':
+            elif c == '\x1b':
                 return None
+            elif c == cnst.BACKSPACE:
+                newstr = newstr[:-1]
+                self.stdscr.move(loc[0],loc[1])
+                self.stdscr.clrtoeol()
+                self.putstr(newstr)
+                continue
             newstr += c
             self.putstr(c)
 

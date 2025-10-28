@@ -419,7 +419,7 @@ class Database():
             self.cur.execute("select * from subtype where id = %s", (stype_id,))
             return self.cur.fetchone()
         except psycopg2.Error as e:
-            handleDBError(e)
+            self.handleDBError(e)
 
     def get_types(self, show=False):
         #self.win.putstr('id, t_name, cat\n')

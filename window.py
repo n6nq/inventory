@@ -430,8 +430,10 @@ class CmdWindow:
                                     self.beep()
                         else:
                             self.str_at(self.prompt_line, 1, 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
+                            loc = self.getloc()
+                            loc = (loc[0], loc[1]-len(search_buffer))
                             while True:
-                                c = self.getch(cnst.PRINTABLE | cnst.NL | cnst.ESC)
+                                c = self.getch(cnst.PRINTABLE | cnst.NL | cnst.ESC | cnst.BS | cnst.LEFT)
                                 if c == '\n':
                                     self.clrtoend(header_at, 1)
                                     return (cnst.NEWOBJ, search_buffer)
@@ -439,6 +441,13 @@ class CmdWindow:
                                     self.clrln(height-2)
                                     search_buffer = ''
                                     break
+                                elif c == cnst.BACKSPACE or c == 'KEY_LEFT':
+                                    search_buffer = search_buffer[:-1]
+                                    self.stdscr.move(loc[0],loc[1])
+                                    self.stdscr.clrtoeol()
+                                    self.putstr(search_buffer)
+                                    continue
+
                                 self.putstr(c)
                                 search_buffer += c
 

@@ -369,7 +369,7 @@ class CmdWindow:
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 search_buffer = search_buffer[:-1]
 
-            elif 33 <= key <= 126:  # Printable ASCII
+            elif 32 <= key <= 126:  # Printable ASCII
                 #if len(tuple_list) == 0:
                 #    return None
 

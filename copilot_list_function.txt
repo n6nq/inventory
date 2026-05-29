@@ -1,0 +1,61 @@
+import curses
+
+def display_tuple_list(tuple_list, display_index, program_title, list_header):
+    """
+    Displays a scrollable list of tuples in the terminal using curses,
+    with a title, header, and bottom-line input prompt.
+
+    Parameters:
+    - tuple_list: List of tuples with fixed number of elements.
+    - display_index: Index of the tuple member to display.
+    - program_title: Title string shown at the top.
+    - list_header: Header string shown below the title.
+    """
+    def draw_menu(stdscr):
+        curses.curs_set(1)  # Show cursor for input
+        stdscr.keypad(True)  # Enable arrow keys
+        height, width = stdscr.getmaxyx()
+
+        max_list_lines = height - 3  # Title + header + input line
+        scroll_pos = 0  # Starting index for visible list
+
+        while True:
+            stdscr.clear()
+
+            # Draw title and header
+            stdscr.addstr(0, 2, program_title[:width-4], curses.A_BOLD)
+            stdscr.addstr(1, 2, list_header[:width-4], curses.A_UNDERLINE)
+
+            # Draw visible portion of the list
+            visible_items = tuple_list[scroll_pos:scroll_pos + max_list_lines]
+            for i, item in enumerate(visible_items):
+                y = i + 2
+                try:
+                    display_text = str(item[display_index])
+                except IndexError:
+                    display_text = "<Index out of range>"
+                stdscr.addstr(y, 2, display_text[:width-4])
+
+            # Draw input prompt at bottom
+            input_prompt = "Enter command (↑↓ to scroll, q to quit): "
+            stdscr.addstr(height - 1, 2, input_prompt[:width-4])
+            stdscr.refresh()
+
+            key = stdscr.getch()
+
+            if key == curses.KEY_UP and scroll_pos > 0:
+                scroll_pos -= 1
+            elif key == curses.KEY_DOWN and scroll_pos < len(tuple_list) - max_list_lines:
+                scroll_pos += 1
+            elif key in (ord('q'), ord('Q')):
+                break
+            elif key == 10:  # Enter key
+                curses.echo()
+                stdscr.move(height - 1, len(input_prompt) + 2)
+                user_input = stdscr.getstr(height - 1, len(input_prompt) + 2, width - len(input_prompt) - 4)
+                curses.noecho()
+                stdscr.addstr(height - 2, 2, f"You entered: {user_input.decode('utf-8')}"[:width-4])
+                stdscr.refresh()
+                stdscr.getch()
+
+    curses.wrapper(draw_menu)

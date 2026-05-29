@@ -1,0 +1,90 @@
+main
+	new_item	->	current_item
+[]	find_something
+[]	delete_something
+	show_something
+		show_items
+			show_all_items	-> current_item
+			show_items_where_category_eq	-> current_item
+			show_items_where_type_eq		-> current_item
+			show_items_where_subtype_eq		-> current_item
+		show_categories
+		show_types
+		show_subtypes
+	
+find_items
+	while True
+		Cat=
+			selected_cat = show_categories
+			current_item = show_items(selected_cat)
+		Type=
+		SubType=
+		Box=
+		Loca=
+		Str=
+		Enter
+		Esc
+		
+		
+t_line = 0
+what_line = 1
+item_line = 1
+list_header_line = 2
+description_line = 2
+list_start_line = 3
+prompt_line = curses.LINES - 1
+
+main
+	restart		t_line = "Inventory program, Ver 0.01"
+	prompt		prompt_line = "Press any key to continue..."
+	choice_at	prompt_line = 'New','Find','Show','Delete','Exit'
+--->new_item
+		item_choice_str	item_line = "Item: "
+		selected_cat = win.select_from_list(cats, 1, 'Category', win.list_header_line, True)
+		item_choice_str item_line = "Item: cat"	
+		selected_type = win.select_from_list(types, 1, 'Type', win.list_header_line, True)
+		item_choice_str item_line = "Item: cat,type"	
+		selected_stype = win.select_from_list(subtypes, 1, 'subtype', win.list_header_line, True)
+		item_choice_str item_line = "Item: cat,type,subtype"	
+		selected_letter = win.select_from_list(letters, 0, 'box letter', win.list_header_line, True)
+		item_choice_str item_line = "Item: cat,type,subtype"	
+		selected_number = win.select_from_list(numbers, 0, 'box number', win.list_header_line, True)
+		item_choice_str item_line = "Item: cat,type,subtype,box number"	
+		selected_location = win.select_from_list(locations, 0, 'location', win.list_header_line, True)		
+			select_from_list	list_header_line = cleared
+								list_header_line = "Category","Type","SubType",box letter,box number,location
+								prompt_line = "Search: xx (↑↓ to scroll, F3=Next, F2=Prev, Enter=Select, ESC=Cancel)"
+								what_line = 'New '+list_header+' is not allowed when searching? Escape to select existing '+ list_header+'.'
+								what_line = 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
+								self.clrtoend(self.list_header_line, 1)
+		item_choice_str item_line = "Item: cat,type,subtype,box number,location"					
+		descript = win.getstr_at(win.description_line, 1, 'Enter item description') #TODO add edit ability to this function
+--->show_something()
+		show_items()
+			show_all_items()
+				selected_item = win.select_from_list(items, -1, "Showing all items:", win.item_line, False)	
+			show_items_where_category_eq()
+				selected_cat = win.select_from_list(cats, 1, 'Select a Category', win.list_header_line, False)
+				win.str_at( win.list_header_line, 1, 'A new category can not be used for searching. Please ')
+[]			show_items_where_type_eq()
+				None
+[]			show_items_where_subtype_eq()
+				None
+		show_categories()
+		show_types()
+		show_subtypea
+
++++++++++++++++++
+main()
+	
+item_choice_str()
+	self.clrtoend(self.item_line, 1)
+	self.str_at(self.item_line, 1, str)
+show_items_where_category_eq()
+	selected_cat = win.select_from_list(cats, 1, 'Select a Category', win.list_header_line, False)
+	win.str_at( win.list_header_line, 1, 'A new category can not be used for searching. Please ')
+show_categories()
+	selected_cat = win.select_from_list(cats, 1, 'Category', win.list_header_line, False)
+set_list_heading()
+	self.clrtoend(self.list_header_line, 1)
+	self.str_at(self.list_header_line,1, 'Choose a '+title)

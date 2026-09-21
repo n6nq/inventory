@@ -1,20 +1,30 @@
-import psycopg2
+#import re
+#import select
+#from ast import Continue
+#from ast import Sub
+from typing import cast
+
+#import psycopg2
 import curses
 import os
+#from unittest import case
+
+from models import Item, ListMember, Category, Type, Subtype, String
+#from dbpostgres import Database
+from dbsqlite import Database
 from window import CmdWindow
-from database import Database
 import cnst
 
-current_item = None
-current_cat = None
-current_type = None
-current_subtype = None
-current_box = None
-current_location = None
+current_item: Item = Item.from_empty()
+current_cat: Category | None = None
+current_type: Type | None = None
+current_subtype: Subtype | None = None
+current_box: String | None = None
+current_location: String | None = None
 
-def main(stdscr):
+def main(stdscr: curses.window):
     global current_item
-    #print("Starting inventory program...")
+
   
     # get database location from environment
     pgaddress = os.getenv('PGADDRESS')
@@ -23,36 +33,43 @@ def main(stdscr):
         pgaddress = 'localhost'
     if pgport == None:
         pgport = '5432'
-    current_item = None
+
     win = CmdWindow(stdscr)
+    errorHandler = win.errorHandler
+    prompter = win.prompter
     # Print first screen
     win.set_title('Inventory program, Ver 0.01')
     win.restart()
     win.save_loc()
-    #win.getch(cnst.ANY)
-    db = Database(win,pgaddress,pgport)
+
+    db = Database(errorHandler, prompter, pgaddress,pgport)
     win.restore_loc()
-    current_item = ''
+    current_item = Item.from_empty()
 
     while(True):
         win.restart()
-        win.str_at(win.item_line, 1, 'Current_item: ' + ", ".join(str(x) for x in current_item))
+        win.str_at(win.item_line, 1, 'Current_item: ' + current_item.str_all())
         choice = win.choice_at(win.prompt_line, 1, ['New&Item','&New','&Find','&Show','&Update','&Delete','&Exit'], True)
 
         match choice:
             case 'I':
-                current_item = new_item(win, db)   #TODO add escape path to this function
+                retobj = new_item(win, db)   #TODO add escape path to this function
+                if type(retobj) == Item:
+                    current_item = retobj
             case 'N':
-                new_something(win, db)   #TODO add escape path to this function
+                retobj = new_something(win, db)   #TODO add escape path to this function
+                if type(retobj) == Item:
+                    current_item = retobj
             case 'F':
-                c_i = find_item(win, db)     #TODO implement this function
-                if c_i != None:
-                    current_item = c_i
+                retobj = find_item(win, db)     #TODO implement this function
+                if type(retobj) == Item:
+                    current_item = retobj
             case 'U':
                 update_something(win, db)
             case 'D':
                 delete_something(win, db)
             case 'S':
+
                 show_something(win, db)
             case 'E':
                 exit()
@@ -61,121 +78,244 @@ def main(stdscr):
             case _:
                 try_again(win, db)
 
-def try_again(win, db):
+def try_again(win: CmdWindow, db: Database) -> None:
     win.bell()
     win.clrln(win.prompt_line)
     win.str_at(win.prompt_line, 1, "Choice not handled! Type any key to try again.")
     win.getch(cnst.ALL)
 
-def list_obj_is_new(obj):
-    assert(len(obj) >= 1)
-    return obj[0] == cnst.NEWOBJ
+def list_obj_is_new(obj: ListMember) -> bool:
+    return obj.id == cnst.NEWOBJ
 
-def new_item(win, db):
-    empty = tuple()
+def select_item(win: CmdWindow, db: Database, items: list[Item], dspwhat: int, selectWhich: int|str, startLine: int) -> Item | None:
+    # Callers of select_item are not allowed to create new items, so newAllowed: bool is not provide is this adapter. New items should
+    # only be created with new_item. Since other ListMemberTypes are much simpler, they are allowed to be created in their adapter functions. 
+    # This is a design decision that could be changed later if needed.
+    selected_item: Item | None = None
+    selected: int = win.select_from_list(items, dspwhat, selectWhich, 'Items', startLine, False)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            # Since callers of this function are not allowed to create new items, this is a programming error.
+            assert(False)
+        case int(index) if 0 <= index < len(items):
+            selected_item = items[index]
+        case _:
+            return None
+    return selected_item
+
+def select_category(win: CmdWindow, db: Database, cats: list[Category], dspwhat: int, selectWhich: int|str, startLine: int, newAllowed: bool) -> Category | None:
+    selected_cat: Category | None = None
+    selected: int = win.select_from_list(cats, dspwhat, selectWhich, 'Category', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = cast(String, cats.pop())  # slice off the last one
+            newcatname: str = selected_str.string                
+            selected_cat = db.add_category(newcatname)  # now it's a Category
+        case int(index) if 0 <= index < len(cats):
+            selected_cat = cats[index]
+        case _:
+            return None
+    return selected_cat
+
+def select_type(win: CmdWindow, db: Database, types: list[Type], dspwhat: int, selectWhich: int|str, startLine: int, cat_id: int, newAllowed: bool) -> Type | None:
+    selected_type: Type | None = None
+    selected: int = win.select_from_list(types, dspwhat, selectWhich, 'Type', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = cast(String, types.pop())  # slice off the last one
+            newtypename: str = selected_str.string
+            assert(cat_id != -1)                    # programming error  -1 should only be passed when newAllowed is False
+            selected_type = db.add_type(newtypename, cat_id)  # now it's a Category
+        case int(index) if 0 <= index < len(types):
+            selected_type = types[index]
+        case _:
+            return None
+    return selected_type
+
+def select_stype(win: CmdWindow, db: Database, stypes: list[Subtype], dspwhat: int, selectWhich: int|str, startLine: int, type_id: int, newAllowed: bool) -> Subtype | None:
+    selected_stype: Subtype | None = None
+    selected: int = win.select_from_list(stypes, dspwhat, selectWhich, 'Subtype', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = cast(String, stypes.pop())  # slice off the last one
+            newstypename: str = selected_str.string
+            assert(type_id != -1)                    # programming error  -1 should only be passed when newAllowed is False
+            selected_stype = db.add_subtype(newstypename, type_id)  # now it's a Category
+        case int(index) if 0 <= index < len(stypes):
+            selected_stype = stypes[index]
+        case _:
+            return None
+    return selected_stype
+
+def select_boxletter(win: CmdWindow, db: Database, letters: list[String], dspwhat: int, selectWhich: int|str, startLine: int, newAllowed: bool) -> String | None:
+
+    selected: int = win.select_from_list(letters, dspwhat, selectWhich, 'Box Letters', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = letters.pop()  # slice off the last one
+            return selected_str                     # '1' means it's new, so it gets a '1'
+        case int(index) if 0 <= index < len(letters):   
+            selected_str = letters[index]
+            return selected_str                     # '0' means an existing letter, so user has to pick a number
+        case _:
+            return None
+
+def select_boxnumber(win: CmdWindow, db: Database, numbers: list[String], dspwhat: int, selectWhich: int|str, startLine: int, newAllowed: bool) -> String | None:
+
+    selected: int = win.select_from_list(numbers, dspwhat, selectWhich, 'Box Numbers', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = numbers.pop()  # slice off the last one
+            return selected_str                     # '1' means it's new, so it gets a '1'
+        case int(index) if 0 <= index < len(numbers):   
+            selected_str = numbers[index]
+            return selected_str                     # '0' means an existing letter, so user has to pick a number
+        case _:
+            return None
+
+def select_location(win: CmdWindow, db: Database, locations: list[String], dspwhat: int, selectWhich: int|str, startLine: int, newAllowed: bool) -> String | None:
+
+    selected: int = win.select_from_list(locations, dspwhat, selectWhich, 'Locations', startLine, newAllowed)
+
+    match selected:
+        case cnst.CANCELED:
+            return None
+        case cnst.NEWOBJ:
+            selected_str: String = locations.pop()  # slice off the last one
+            return selected_str                     # '1' means it's new, so it gets a '1'
+        case int(index) if 0 <= index < len(locations):   
+            selected_str = locations[index]
+            return selected_str                     # '0' means an existing letter, so user has to pick a number
+        case _:
+            return None
+
+
+def new_item(win: CmdWindow, db: Database) -> Item | None:
     # Paint the item line
+
     win.item_choice_str('Item: ')
     item_at = win.getloc()
-    #what_line = item_at[0] + 1
 
-    # Get an existing or new category
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.list_header_line, True) 
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, True)
 
-    if selected_cat == None:
-        return empty
-
-    if list_obj_is_new(selected_cat):
-        newcatname = selected_cat[1]
-        selected_cat = db.add_category(newcatname)
-
-   
-    cat_id = selected_cat[0]
-    win.str_at(item_at[0], item_at[1], selected_cat[1]+', ')
-    item_at = win.getloc()
-
-    # Get an existing or new type
-    types = db.get_types_for_cat(cat_id)
-    selected_type = win.select_from_list(types, 1, 0, 'Type', win.list_header_line, True)  
+    if selected_cat is None:
+        return None
     
-    if selected_type == None:
-        return empty
-
-    if list_obj_is_new(selected_type):
-        newtypename = selected_type[1]
-        selected_type = db.add_type(newtypename, cat_id)
-
-    type_id = selected_type[0]
-    win.str_at(item_at[0], item_at[1], selected_type[1]+', ')
+    cat_id: int = selected_cat.id
+    cat_str: str = selected_cat.c_name
+    win.str_at(item_at[0], item_at[1], cat_str+', ')
     item_at = win.getloc()
 
-    # Get an existing or new subtype
-    subtypes = db.get_subtypes_for(type_id)
-    selected_stype = win.select_from_list(subtypes, 1, 0, 'subtype', win.list_header_line, True)
+    # Get an existing or new type ####################################################
+    types = db.get_types_for_cat(cat_id)
+    selected_type = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, cat_id, True)
 
-    if selected_stype == None:
-        return empty
+    if selected_type is None:
+        return None
 
-    if list_obj_is_new(selected_stype):
-        newsubtypename = selected_stype[1]
-        selected_stype = db.add_subtype(newsubtypename, type_id)
+    type_id: int = selected_type.id
+    type_name: str = selected_type.t_name
+    win.str_at(item_at[0], item_at[1], type_name+', ')
+    item_at = win.getloc()
 
-    subtype_id = selected_stype[0]
-    win.str_at(item_at[0], item_at[1], selected_stype[1]+', ')
+    # Get an existing or new subtype ################################################
+    subtypes = db.get_subtypes_for([type_id])
+    selected_stype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, type_id, True)
+
+    if selected_stype is None:
+        return None
+
+    sub_id = selected_stype.id
+    sub_str = selected_stype.st_name
+    win.str_at(item_at[0], item_at[1], sub_str+', ')
     item_at = win.getloc()
 
     # Get Box id
     letters = db.get_box_letters()
-    selected_letter = win.select_from_list(letters, 0, 0, 'box letter', win.list_header_line, True)
+    
+    selected_str: String | None = select_boxletter(win, db, letters, cnst.DSPLYSTR, 0, win.list_header_line, True)
 
-    if selected_letter == None:
-        return empty
 
-    if list_obj_is_new(selected_letter):
-        newletter = selected_letter[1][0].upper()
-        newnumber = '1'
+    match selected_str:
+        case None:
+            return None
+        case String():
+            newletter: str = selected_str.string.upper()
+        case _:
+            assert(False)       # Programming error
+
+
+    if selected_str.id == cnst.NEWOBJ:
+        newnumber = "1"
     else:
-        newletter = selected_letter[0]
-        numbers = db.get_box_numbers(selected_letter[0])
-        selected_number = win.select_from_list(numbers, 0, 0, 'box number', win.list_header_line, True)
+        numbers = db.get_box_numbers(newletter)
 
-        if selected_number == None:
-            return empty
-        if list_obj_is_new(selected_number):
-            newnumber = selected_number[1]
+        if len(numbers) == 0:
+            newnumber = "1"
         else:
-            newnumber = selected_number[0]
+            selected_num: String | None = select_boxnumber(win, db, numbers, cnst.DSPLYSTR, 0, win.list_header_line, True)
+
+            match selected_num:
+                case None:
+                    return None
+                case String():
+                    newnumber: str = selected_num.string
+                case _:
+                    assert(False)       # Programming error
+
     boxid  = newletter + newnumber
     win.str_at(item_at[0], item_at[1], boxid+', ')
     item_at = win.getloc()
 
     # Get box location
-    locations = db.get_locations()
-    selected_location = win.select_from_list(locations, 0, 0, 'location', win.list_header_line, True)
+    locations = db.get_locations()  #fix list[unknown]  
+    selected_loc: String | None = select_location(win, db, locations, cnst.DSPLYSTR, 0, win.list_header_line, True)
 
-    if selected_location == None:
-        return empty
-    if list_obj_is_new(selected_location):
-        loc = selected_location[1]
-    else:
-        loc = selected_location[0]
+    match selected_loc:
+        case None:
+            return None
+        case String():
+            loc: str = selected_loc.string
+        case _:
+            assert(False)       # Programming error
+
     win.str_at(item_at[0], item_at[1], loc+', ')
     item_at = win.getloc()
 
     # Get item description
     descript = win.getstr_at(win.description_line, 1, 'Enter item description') #TODO add edit ability to this function
+    if descript == None:
+        return None
     win.str_at(item_at[0], item_at[1], descript+', ')
     item_at = win.getloc()
 
     # Save item to database
-    ni = db.add_item(cat_id, type_id, subtype_id, boxid, loc, descript)
-    return (ni[0],selected_cat[1],selected_type[1],selected_stype[1],ni[4],ni[5],ni[6])
+    ni = db.add_item(cat_id, type_id, sub_id, boxid, loc, descript)
+    return ni
 
 
 
 
-def find_item(win, db):
-    global current_item
+def find_item(win: CmdWindow, db: Database) -> Item | None:
 
     while(True):
         win.restart()
@@ -198,84 +338,92 @@ def find_item(win, db):
             case _:
                 try_again(win, db)
 
-def find_item_by_all(win, db):
+        
+
+def find_item_by_all(win: CmdWindow, db: Database) -> Item | None:
     win.restart()
     win.str_at(win.what_line, 1, 'Find item from all items:')
-    items = db.get_joined_items()
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
-    # will automatically return None
+    items = db.get_items()
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     return selected_item
 
-def find_by_str_value(win, db):
+def find_by_str_value(win: CmdWindow, db: Database) -> Item | None:
     win.restart()
     win.str_at(win.what_line, 1, 'Find item by string value:')
-    items = db.get_joined_items()
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
-    # will automatically return None
+    items = db.get_items()
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     return selected_item
 
-def find_item_by_cat(win, db):
+def find_item_by_cat(win: CmdWindow, db: Database) -> Item | None:
     win.restart()
     win.str_at(win.what_line, 1, 'Find item by category:')
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, "Categories:", win.list_header_line, False)
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
+
     if selected_cat == None:
         return None
     win.restart()
-    win.str_at(win.what_line, 1, 'Find item with category: '+ selected_cat[1])
-    items = db.get_items_by_cat(selected_cat[0])
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
-    # will automatically return when user escapes
+    win.str_at(win.what_line, 1, 'Find item with category: '+ selected_cat.c_name)
+    items = db.get_items_by_cat(selected_cat.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     return selected_item
 
-def find_item_by_cat_type(win, db):
+def find_item_by_cat_type(win: CmdWindow, db: Database) -> Item | None:
     win.restart()
     win.str_at(win.what_line, 1, 'Find item by category and type:')
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, "Categories:", win.list_header_line, False)
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
+
     if selected_cat == None:
         return None
     win.restart()
-    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat[1]+ ' and which type:')
-    types = db.get_types_for_cat(selected_cat[0])
-    selected_type = win.select_from_list(types, 1, 0, "Type for Category: "+selected_cat[1], win.list_header_line, False)
+    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat.c_name+ ' and which type:')
+    types = db.get_types_for_cat(selected_cat.id)
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, selected_cat.id, False)
+
     if selected_type == None:
         return None
-    win.str_at(win.what_line, 1, 'Find item with category: '+ selected_cat[1] + ' and type: ' + selected_type[1])
-    items = db.get_items_by_cat_type(selected_cat[0], selected_type[0])
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
-    # If None, it will be returned
+    win.str_at(win.what_line, 1, 'Find item with category: '+ selected_cat.c_name + ' and type: ' + selected_type.t_name)
+    items = db.get_items_by_cat_type(selected_cat.id, selected_type.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     return selected_item
 
-def find_item_by_cat_type_sub(win, db):
+def find_item_by_cat_type_sub(win: CmdWindow, db: Database) -> Item | None:
     win.restart()
     win.str_at(win.what_line, 1, 'Find item by category, type and subtype:')
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, "Categories:", win.list_header_line, False)
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
+
     if selected_cat == None:
         return None
 
     win.restart()
-    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat[1]+ ' and which type:')
-    types = db.get_types_for_cat(selected_cat[0])
-    selected_type = win.select_from_list(types, 1, 0, "Type for Category: "+selected_cat[1], win.list_header_line, False)
+    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat.c_name+ ' and which type:')
+    types = db.get_types_for_cat(selected_cat.id)
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, selected_cat.id, False)
+
     if selected_type == None:
         return None
 
     win.restart()
-    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat[1]+ ', type '+selected_type[1]+ ' and which subtype:')
-    subtypes = db.get_subtypes_for(selected_type[0])
-    selected_subtype = win.select_from_list(subtypes, 1, 0, "SubType for Category: "+selected_cat[1], win.list_header_line, False)
+    win.str_at(win.what_line, 1, 'Find item by category '+selected_cat.c_name+ ', type '+selected_type.t_name+ ' and which subtype:')
+    subtypes = db.get_subtypes_for([selected_type.id])
+    selected_subtype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, False)
+
     if selected_subtype == None:
         return None
 
-    win.str_at(win.what_line, 1, 'Find item with category: '+selected_cat[1]+', type: '+selected_type[1]+' and subtype: '+selected_subtype[1])
-    items = db.get_items_by_cat_type_subtype(selected_cat[0], selected_type[0], selected_subtype[0])
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
-    # None will be returned
+    win.str_at(win.what_line, 1, 'Find item with category: '+selected_cat.c_name+', type: '+selected_type.t_name+' and subtype: '+selected_subtype.st_name)
+    items = db.get_items_by_cat_type_subtype(selected_cat.id, selected_type.id, selected_subtype.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     return selected_item
 
-def update_something(win, db):
+def update_something(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Update which?:')
     choice = win.choice_at(win.prompt_line, 1, ['&Item','&Category','&Type','&Subtype', '&Return'], True)
@@ -293,19 +441,9 @@ def update_something(win, db):
         case _:
            try_again(win, db)
 
-def replace_column(row, col, new_value):
-    columns = row.split(sep = ', ')
-    columns[col] = new_value
-    new_row = ", ".join(str(x) for x in columns)
-    return new_row
-
-def get_column(row, col):
-    columns = row.split(sep = ', ')
-    return columns[col]
-
-def update_item(win, db):
+def update_item(win: CmdWindow, db: Database) -> None:
     global current_item
-    if current_item == None or len(current_item) == 0:
+    if current_item.id == 0:
         win.restart()
         win.str_at(win.what_line, 1, 'You need to select a current_item first. See the "Find" choice.')
     else:
@@ -313,17 +451,13 @@ def update_item(win, db):
         uline = win.what_line
         nline = uline+1
         lline = uline+2
-        win.str_at(uline, 1, 'Updating item: '+", ".join(str(x) for x in current_item)+'.')
+        win.str_at(uline, 1, 'Updating item: '+current_item.str_all()+'.')
         win.str_at(nline, 1, 'Start with which column ? ')
-        new_item = ", ".join(str(x) for x in current_item) + '.'
-        real_item = db.get_plain_item_by_id(current_item[0])
-        item_id = real_item[0]
-        cat_id = real_item[1]
-        type_id = real_item[2]
-        subtype_id = real_item[3]
-        box_id = real_item[4]
-        loc = real_item[5]
-        descript = real_item[6]
+        new_item = db.get_item_by_id(current_item.id)
+        if new_item is None:
+            win.str_at(nline, 1, 'Error: item not found in database.')
+            return
+        dirty: bool = False
 
         while(True):
             win.clrtoend(lline, 1)
@@ -332,180 +466,149 @@ def update_item(win, db):
             # Get an existing or new category
             win.clrln(nline)
             prefix = '     New item: '
-            win.str_at(nline, 1, prefix + new_item)
-            #orig_at = win.getloc()  #deprecated
-            #item_at = orig_at       #deprecated
+            win.str_at(nline, 1, prefix + new_item.str_all())
 
             if choice == 'R' or choice == cnst.ESCAPE:
                 return
 
             if choice == 'C':
                 cats = db.get_categories()
-                selected_cat = win.select_from_list(cats, 1, get_column(new_item, 1), 'Category', lline, True) 
+                selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, True)
 
-                if selected_cat == None:
+                if selected_cat is None:
                     continue
 
-                if list_obj_is_new(selected_cat):
-                    newcatname = selected_cat[1]
-                    selected_cat = db.add_category(newcatname)
-   
-                cat_id = selected_cat[0]
-                new_item = replace_column(new_item, 1, selected_cat[1])
-                win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
-                #win.str_at(item_at[0], item_at[1], selected_cat[1]+', ')
-                #item_at = win.getloc()
+                if selected_cat.id != new_item.cat_id:
+                    new_item.cat_id = selected_cat.id
+                    new_item.cat_str = selected_cat.c_name
+                    dirty = True
+                    win.clrln(nline)
+                    win.str_at(nline, 1, prefix + new_item.str_all())
             
                 # Get an existing or new type
-                types = db.get_types_for_cat(cat_id)
+                types = db.get_types_for_cat(new_item.cat_id)
 
-                if cat_id != real_item[1]:  # if cat_id not equal cat_id in current_item 
-                    preselecttype = 0           #   then preselect the first first type
-                else:                       # else
-                    preselecttype = real_item[2]#   preselect the type in current_item
+                if new_item.cat_id != current_item.cat_id:  # if cat_id not equal cat_id in current_item 
+                    preselect = 0                       #   then preselect the first first type
+                else:                                       # else
+                    preselect =  current_item.type_id       #   preselect the type in current_item
 
-                selected_type = win.select_from_list(types, 1, preselecttype, 'Type', lline, True)  
-    
-                if selected_type == None:
+                selected_type = select_type(win, db, types, cnst.DSPLYNAME, preselect, win.list_header_line, new_item.cat_id, True)
+
+                if selected_type is None:
                     continue
 
-                if list_obj_is_new(selected_type):
-                    newtypename = selected_type[1]
-                    selected_type = db.add_type(newtypename, cat_id)
-
-                type_id = selected_type[0]
-                new_item = replace_column(new_item, 2, selected_type[1])
-                win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
-                #win.str_at(item_at[0], item_at[1], selected_type[1]+', ')
-                #item_at = win.getloc()
+                if selected_type.id != new_item.type_id:
+                    new_item.type_id = selected_type.id
+                    new_item.type_str = selected_type.t_name
+                    dirty = True
+                    win.clrln(nline)
+                    win.str_at(nline, 1, prefix + new_item.str_all())
 
                 # Get an existing or new subtype
-                subtypes = db.get_subtypes_for(type_id)
+                subtypes = db.get_subtypes_for([new_item.type_id])
 
-                if type_id != real_item[2]:         # if type_id not equal type_id in current_item 
-                    preselectsubtype = 0            #   then preselect the first subtype
-                else:                               # else
-                    preselectsubtype = real_item[3] #   preselect the type in current_item
+                if new_item.type_id != current_item.type_id:    # if type_id not equal type_id in current_item 
+                    preselect = 0                        #   then preselect the first subtype
+                else:                                           # else
+                    preselect = current_item.sub_id          #   preselect the previous subtype
 
-                selected_stype = win.select_from_list(subtypes, 1, preselectsubtype, 'SubType', lline, True)
+                selected_stype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, True)
 
-                if selected_stype == None:
+                if selected_stype is None:
                     continue
 
-                if list_obj_is_new(selected_stype):
-                    newsubtypename = selected_stype[1]
-                    selected_stype = db.add_subtype(newsubtypename, type_id)
-
-                subtype_id = selected_stype[0]
-                new_item = replace_column(new_item, 3, selected_stype[1])
-                win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
-                #win.str_at(item_at[0], item_at[1], selected_stype[1]+', ')
-                #item_at = win.getloc()
-
-                if subtype_id == None:
-                    cat_id = real_item[1]
-                    type_id = real_item[2]
-                    subtype_id = real_item[3]
-                    new_item = current_item
+                if selected_stype.id != new_item.sub_id:
+                    new_item.sub_id = selected_stype.id
+                    new_item.sub_str = selected_stype.st_name
+                    dirty = True
                     win.clrln(nline)
-                    win.str_at(nline, 1, prefix + new_item)
+                    win.str_at(nline, 1, prefix + new_item.str_all())
 
-                #win.str_at(orig_at[0], orig_at[1],real_item[1]+', '+real_item[2]+', '+real_item[3])
-                #item_at = win.getloc()
 
             # Get Box id
 
             if choice == 'B':
                 letters = db.get_box_letters()
-                selected_letter = win.select_from_list(letters, 0, get_column(new_item, 4)[0], 'box letter', lline, True)
 
-                if selected_letter == None:
-                    continue
+                selected_str: String | None = select_boxletter(win, db, letters, cnst.DSPLYSTR, 0, win.list_header_line, True)
 
-                if list_obj_is_new(selected_letter):
-                    newletter = selected_letter[1][0].upper()
-                    newnumber = '1'
-                else:
-                    newletter = selected_letter[0]
-                    numbers = db.get_box_numbers(selected_letter[0])
-                    selected_number = win.select_from_list(numbers, 0, get_column(new_item, 4)[1:], 'box number', lline, True)
-
-                    if selected_number == None:
+                match selected_str:
+                    case None:
                         continue
+                    case String():
+                        newletter: str = selected_str.string.upper()
+                    case _:
+                        assert(False)       # Programming error
 
-                    if list_obj_is_new(selected_number):
-                        newnumber = selected_number[1]
+                if selected_str.id == cnst.NEWOBJ:
+                    newnumber = "1"
+                else:
+                    numbers = db.get_box_numbers(newletter)
+
+                    if len(numbers) == 0:
+                        newnumber = "1"
                     else:
-                        newnumber = selected_number[0]
-                box_id  = newletter + newnumber
-                new_item = replace_column(new_item, 4, box_id)
+                        selected_num: String | None = select_boxnumber(win, db, numbers, cnst.DSPLYSTR, 0, win.list_header_line, True)
+
+                        match selected_num:
+                            case None:
+                                continue
+                            case String():
+                                newnumber: str = selected_num.string
+                            case _:
+                                assert(False)       # Programming error
+
+                box  = newletter + newnumber
+                new_item.box = box
+                dirty = True
                 win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
+                win.str_at(nline, 1, prefix + new_item.str_all())
 
             # Get box location
             if choice == 'L':
                 locations = db.get_locations()
-                selected_location = win.select_from_list(locations, 0, get_column(new_item, 5), 'location', lline, True)
+                selected_loc: String | None = select_location(win, db, locations, cnst.DSPLYSTR, 0, win.list_header_line, True)
 
-                if selected_location == None:
-                    continue
+                match selected_loc:
+                    case None:
+                        continue
+                    case String():
+                        loc: str = selected_loc.string
+                        new_item.loc = loc
+                    case _:
+                        assert(False)       # Programming error
 
-                if list_obj_is_new(selected_location):
-                    loc = selected_location[1]
-                else:
-                    loc = selected_location[0]
-                new_item = replace_column(new_item, 5, loc)
+            
+                dirty = True
                 win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
+                win.str_at(nline, 1, prefix + new_item.str_all())
 
             # Get item description
             if choice == 'D':
-                descript = win.getstr_at(lline, 1, 'Enter item description') #TODO add edit ability to this function
+                descript = win.getstr_at(lline, 1, 'Enter item description')    #TODO add edit ability to this function
             
                 if descript == None:
-                    descript = get_column(real_item, 6)
+                    descript = new_item.descript
 
-                new_item = replace_column(new_item, 6, descript)
+                new_item.descript = descript
+                dirty = True
                 win.clrln(nline)
-                win.str_at(nline, 1, prefix + new_item)
+                win.str_at(nline, 1, prefix + new_item.str_all())
 
             # Save item to database
-            if choice == 'U':
-                ni = db.update_item(item_id, cat_id, type_id, subtype_id, box_id, loc, descript)
-                current_item = tuple(new_item.split(sep = ', '))
+            if choice == 'U' and dirty:
+                db.update_item(new_item)
+                current_item = new_item
                 win.clrln(uline)
-                win.str_at(uline, 1, 'Updating item: '+", ".join(str(x) for x in current_item)+'.')
+                win.str_at(uline, 1, 'Updating item: '+new_item.str_all()+'.')
                 return 
 
     win.str_at(win.prompt_line,1,'Press any key to continue...')
     win.getch(cnst.ANY)
     return
 
-# def update_item_cat(win, db,real_item):
-#     win.restart()
-#     win.str_at(win.what_line, 1, 'Updating item: '+repr(current_item)+'. Which column?')
-#     choice = win.choice_at(win.prompt_line,1,['&Category','&Type','&SubType','&Box','&Location','&Description','&Return'],True)
-
-
-# def update_item_type(real_item):
-#     pass
-
-# def update_item_subtype(real_item):
-#     pass
-
-# def update_item_box(real_item):
-#     pass
-
-# def update_item_location(real_item):
-#     pass
-
-# def update_item_description(real_item):
-#    pass
-
-def udpate_category(win, db):
+def udpate_category(win: CmdWindow, db: Database) -> None:
     win.restart()
     uline = win.what_line
     nline = uline+1
@@ -513,40 +616,46 @@ def udpate_category(win, db):
 
     cats = db.get_categories()
     win.str_at(uline,1,'Update which Category?')
-    selected_cat = win.select_from_list(cats, 1, 0, 'Categories', lline, False)
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, lline, False)
 
     if selected_cat == None:
         return
 
     win.restart()
-    win.str_at(uline, 1, "Update "+ selected_cat[1])
+    win.str_at(uline, 1, "Update "+ selected_cat.c_name)
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_cat(selected_cat[0], new_value)
+        db.update_cat(selected_cat.id, new_value)
 
-def update_type(win, db):
+def update_type(win: CmdWindow, db: Database) -> None:
     win.restart()
     uline = win.what_line
     nline = uline+1
     lline = uline+2
 
+    #make a cat dictionary
+    cats = db.get_categories()
+    catdict = {}
+    for cat in cats:
+        catdict[cat.id] = cat.c_name
+
     types = db.get_types()
     win.str_at(uline,1,'Update which Type?')
-    selected_type = win.select_from_list(types, 1, 0, 'Types', lline, False)
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, lline, -1, False)
 
     if selected_type == None:
         return
 
     win.restart()
-    win.str_at(uline, 1, "Update "+ selected_type[1])
+    win.str_at(uline, 1, "Update "+ selected_type.t_name)
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_type(selected_type[0], new_value)
+        db.update_type(selected_type.id, new_value)
 
 
-def update_subtype(win, db):
+def update_subtype(win: CmdWindow, db: Database) -> None:
     win.restart()
     uline = win.what_line
     nline = uline+1
@@ -554,20 +663,20 @@ def update_subtype(win, db):
 
     subtypes = db.get_subtypes()
     win.str_at(uline,1,'Update which SubType?')
-    selected_subtype = win.select_from_list(subtypes, 1, 0, 'SubTypes', lline, False)
+    selected_subtype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, lline, -1, False)
 
     if selected_subtype == None:
         return
 
     win.restart()
-    win.str_at(uline, 1, "Update "+ selected_subtype[1])
+    win.str_at(uline, 1, "Update "+ selected_subtype.st_name)
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_subtype(selected_subtype[0], new_value)
+        db.update_subtype(selected_subtype.id, new_value)
 
 
-def delete_something(win, db):
+def delete_something(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Delete which?:')
     choice = win.choice_at(win.prompt_line, 1, ['&Item','&Category','&Type','&Subtype', '&Return'], True)
@@ -585,66 +694,72 @@ def delete_something(win, db):
         case _:
            try_again(win, db)
 
-def delete_item(win, db):
+def delete_item(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Select item for deletion:')
-    items = db.get_joined_items()
-    selected_item = win.select_from_list(items, -1, 0, "Items:", win.list_header_line, False)
+    items = db.get_items()
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
     if selected_item == None:
         return
-    win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_item)+' ???')
+    win.str_at(win.prompt_line-1, 1, 'Delete:  '+selected_item.str_all()+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_item(selected_item[0])
+        db.delete_item(selected_item.id)
     return None
 
-def delete_category(win, db):
+def delete_category(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Select category for deletion:')
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, "Categories:", win.list_header_line, False)
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
+
     if selected_cat == None:
         return
+    
     win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_cat)+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_cat(selected_cat[0])
+        db.delete_cat(selected_cat.id)
     return None
 
-def delete_type(win, db):
+def delete_type(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Select type for deletion:')
     types = db.get_types()
-    selected_type = win.select_from_list(types, 1, 0, "Types:", win.list_header_line, False)
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
+
     if selected_type == None:
         return
     win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_type)+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_type(selected_type[0])
+        db.delete_type(selected_type.id)
     return None
 
-def delete_subtype(win, db):
+def delete_subtype(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Select subtype for deletion:')
     stypes = db.get_subtypes()
-    selected_stype = win.select_from_list(stypes, 1, 0, "SubTypes:", win.list_header_line, False)
-    if selected_stype == None:
-        return
-    win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_stype)+' ???')
+    selected_stype: Subtype | None = select_stype(win, db, stypes, cnst.DSPLYNAME, 0, win.list_header_line, -1, True)
+
+    if selected_stype is None:
+        return None
+
+    win.str_at(win.prompt_line-1, 1, 'Delete:'+selected_stype.str_all()+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_stype(selected_stype[0])
+        db.delete_stype(selected_stype.id)
     return None
 
-def new_something(win, db):
+def new_something(win: CmdWindow, db: Database) -> Item |None:
     global current_item
     win.restart()
     win.str_at(win.what_line, 1, 'A new which?:')
     choice = win.choice_at(win.prompt_line, 1, ['&Item','&Category','&Type','&Subtype', '&Return'], True)
     match choice:
         case 'I':
-            current_item = new_item(win, db)
+            return new_item(win, db)
         case 'C':
             new_category(win, db)
         case 'T':
@@ -652,73 +767,65 @@ def new_something(win, db):
         case 'S':
             new_subtype(win, db)
         case 'R' | cnst.ESCAPE:
-            return
+            pass
         case _:
            try_again(win, db)
+    return None
 
-def new_category(win, db):
+def new_category(win: CmdWindow, db: Database) -> None:
     cats = db.get_categories()
     win.str_at(win.what_line,1,"If your new Category is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new category name and hit Enter.")
-    selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.what_line+2, True) 
+    select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True)
 
-    if selected_cat == None:
-        return
 
-    if list_obj_is_new(selected_cat):
-        newcatname = selected_cat[1]
-        selected_cat = db.add_category(newcatname)
 
-def new_type(win, db):
+
+def new_type(win: CmdWindow, db: Database) -> None:
     cats = db.get_categories()
-    win.str_at(win.what_line,1,"A new Type must belong to an existing Category. Please select")
-    win.str_at(win.what_line+1,1, "the new type's parent from the existing list.")
-    selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.what_line+2, False) 
+    win.str_at(win.what_line,1,"A new Type must belong to an existing or new Category.")
+    win.str_at(win.what_line+1,1, " Please select or createthe new type's parent from the existing list.")
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True) 
 
-    if selected_cat == None:
-        return
+    if selected_cat is None:
+        return None
 
+    
     win.restart()
-    types = db.get_types_for_cat(selected_cat[0])
+    types = db.get_types_for_cat(selected_cat.id)
     win.str_at(win.what_line,1,"If your new Type is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new Type name and hit Enter.")
-    new_type = win.select_from_list(types, 1, 0, 'Types', win.what_line+2, True) 
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
 
-    if new_type == None:
+    if selected_type == None:
         return
 
-    if list_obj_is_new(new_type):
-        db.add_type(new_type[1], selected_cat[0])
 
-def new_subtype(win, db):
+def new_subtype(win: CmdWindow, db: Database) -> None:
     win.str_at(win.what_line,1,"A new SubType must belong to an existing Category and Type. Please select")
     win.str_at(win.what_line+1,1, "the new Subtype's parent Category and Type from the following two lists.")
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.what_line+2, False) 
+    selected_cat = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True) 
 
     if selected_cat == None:
         return
 
     win.restart()
-    types = db.get_types_for_cat(selected_cat[0])
-    selected_type = win.select_from_list(types, 1, 0, 'Type', win.what_line+2, False) 
+    types = db.get_types_for_cat(selected_cat.id)
+    selected_type = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, selected_cat.id, True)
 
     if selected_type == None:
         return
 
     win.restart()
-    subtypes = db.get_subtypes_for(selected_type[0])
+    subtypes = db.get_subtypes_for([selected_type.id])
     win.str_at(win.what_line,1,"If your new SubType is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new SubType name and hit Enter.")
-    new_stype = win.select_from_list(subtypes, 1, 0, 'SubTypes', win.what_line+2, True)
+    select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, True)
 
-    if new_stype == None:
-        return
 
-    if list_obj_is_new(new_stype):
-        db.add_subtype(new_stype[1], selected_type[0])
 
-def show_something(win, db):
+def show_something(win: CmdWindow, db: Database) -> None:
     win.restart()
     win.str_at(win.what_line, 1, 'Show which?:')
     choice = win.choice_at(win.prompt_line, 1, ['&Items','&Categories','&Types','&Subtypes', '&Return'], True)
@@ -737,86 +844,107 @@ def show_something(win, db):
            try_again(win, db)
 
 
-def show_items(win, db):
+def show_items(win: CmdWindow, db: Database) -> None:
     global current_item
     win.restart()
     win.str_at(2, 1, 'Show which items?')
     choice = win.choice_at(3, 1, ['&All','&Category =','&Type =','&Subtype =','&Return'], True)
     match choice:
         case 'A':
-            current_item = show_all_items(win, db)
+            selected_item = show_all_items(win, db)
+            if selected_item != None:
+                current_item = selected_item
         case 'C':
-            current_item = show_items_where_category_eq(win, db)
+            selected_item = show_items_where_category_eq(win, db)
+            if selected_item != None:
+                current_item = selected_item
         case 'T':
-            current_item = show_items_where_type_eq(win, db)
+            selected_item = show_items_where_type_eq(win, db)
+            if selected_item != None:
+                current_item = selected_item
         case 'S':
-            current_item = show_items_where_subtype_eq(win, db)
+            selected_item = show_items_where_subtype_eq(win, db)
+            if selected_item != None:
+                current_item = selected_item
         case 'R' | cnst.ESCAPE:
             return
         case _:
             try_again(win, db)
 
-def show_all_items(win, db):
+
+def show_all_items(win: CmdWindow, db: Database) -> None:
     global current_item
     win.restart()
-    items = db.get_joined_items()
-    selected_item = win.select_from_list(items, -1, 0, "Showing all items:", win.what_line, False)
-    if selected_item == None:
-        return current_item
-    return selected_item
+    items = db.get_items()
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
 
-def show_items_where_category_eq(win, db):
+    if selected_item is not None:
+        current_item = selected_item  
+    return None
+
+def show_items_where_category_eq(win: CmdWindow, db: Database) -> None:
     global current_item
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, -1, 0, 'Select a Category', win.list_header_line, False)
-    if selected_cat == None:
-        return current_item
-    win.restart()
-    items = db. get_items_by_cat(selected_cat[0])
-    selected_item = win.select_from_list(items, -1, 0, 'Select a Item', win.list_header_line, False)
-    if selected_item == None:
-        return current_item
-    return selected_item
+    selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
 
-def show_items_where_type_eq(win, db):
+    if selected_cat is None:
+        return None
+    #selected_cat = cats[selected] 
+
+    win.restart()
+    items = db. get_items_by_cat(selected_cat.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
+
+    if selected_item is not None:
+        current_item = selected_item
+    return None
+
+def show_items_where_type_eq(win: CmdWindow, db: Database) -> None:
     global current_item
     types = db.get_types()
-    selected_type = win.select_from_list(types, -1, 0, 'Select a Type', win.list_header_line, False)
-    if selected_type == None:
-        return current_item
-    win.restart()
-    items = db. get_items_by_type(selected_type[0])
-    selected_item = win.select_from_list(items, -1, 0, 'Select a Item', win.list_header_line, False)
-    if selected_item == None:
-        return current_item
-    return selected_item
+    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYALL, 0, win.list_header_line, -1, False)
 
-def show_items_where_subtype_eq(win, db):
+    if selected_type is None:
+        return None
+
+    win.restart()
+    items = db. get_items_by_type(selected_type.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
+    if selected_item is not None:
+        current_item = selected_item
+    return None
+
+def show_items_where_subtype_eq(win: CmdWindow, db: Database) -> None:
     global current_item
     stypes = db.get_subtypes()
-    selected_stype = win.select_from_list(stypes, -1, 0, 'Select a SubType', win.list_header_line, False)
-    if selected_stype == None:
-        return current_item
+    selected_stype: Subtype | None = select_stype(win, db, stypes, cnst.DSPLYALL, 0, win.list_header_line, -1, False)
+
+    if selected_stype is None:
+        return None
+    
     win.restart()
-    items = db. get_items_by_stype(selected_stype[0])
-    selected_item = win.select_from_list(items, -1, 0, 'Select a Item', win.list_header_line, False)
-    if selected_item == None:
-        return current_item
-    return selected_item
+    items = db. get_items_by_stype(selected_stype.id)
+    selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
+
+    if selected_item is not None:
+        current_item = selected_item
+    return None
 
 
 
-def show_categories(win, db):
+def show_categories(win: CmdWindow, db: Database) -> None:
     cats = db.get_categories()
-    selected_cat = win.select_from_list(cats, 1, 0, 'Category', win.list_header_line, False)
+    select_category(win, db, cats, cnst.DSPLYNAME, 0, win.list_header_line, False)
 
-def show_types(win, db):
+def show_types(win: CmdWindow, db: Database) -> None:
     types = db.get_types()
-    selected_type = win.select_from_list(types, 1, 0, 'Types', win.list_header_line, False)
+    select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
 
-def show_subtypes(win, db):
+def show_subtypes(win: CmdWindow, db: Database) -> None:
     stypes = db.get_subtypes()
-    selected_stype = win.select_from_list(stypes, 1, 0, 'SubTypes', win.list_header_line, False)
+    select_stype(win, db, stypes, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
 
 if __name__ == "__main__":
     curses.wrapper(main)

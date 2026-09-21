@@ -1,7 +1,5 @@
 # cnst.py -- Text filtering constants
 
-from pickle import OBJ
-
 
 ALL = 511       # All is all below expect any
 A_Z	= 1         # All alpha charaters a to z
@@ -13,13 +11,13 @@ DOWN = 32       # down is KEY_DOWN or KEY_C2
 LEFT = 64       # left is KEY_LEFT or KEY_B1
 RIGHT = 128     # right is KEY_RIGHT or KEy_B3
 PRINTABLE = 256    # ctrl_a is \x01
-NUMBER = 512       # number is \d
+NUMBER = 512       # number is \d 
 SPACE = 1024
 BS = 2048
 ANY  = 4096
 
-NEWOBJ  = -1    # if id col is -1, it is a new object that is not in the database yet.
-#ESCAPED  = -2   # if id col is -2, no object was selected  obsolete
+NEWOBJ  = -1    # return values from select_from_list which 
+CANCELED = -2   # normally returns
 
 OBJID   = 0
 OBJNAME = 1
@@ -36,3 +34,9 @@ DESC = 6
 # characters
 ESCAPE = '\x1b'
 BACKSPACE = '\x08'
+
+# list display stype
+DSPLYALL = -1
+DSPLYSTR = 0
+DSPLYNAME = 1
+DSPLYRAWSTR = 2

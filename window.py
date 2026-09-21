@@ -1,34 +1,40 @@
 ﻿# The command window class. Implemented with windows cmd window.
 # May be implemented with windows-curses later.
-import ctypes
-import sys
+
 import curses
 import cnst
-from scanf import scanf
-import time
+from models import ListMemberProtocol, String
+from collections.abc import Sequence
+
+class MyCurses:
+    PADENTER = 10
+    KEY_A2 = 450
+    KEY_B1 = 452
+    KEY_B3 = 454
+    KEY_C2 = 456
 
 class CmdWindow:
 
-    def __init__(self,stdscr):
+    def __init__(self,stdscr: curses.window) -> None:
         self.stdscr = stdscr
-        self.curx = 0
+        self.curx: int = 0
         self.cury = 0
-        self.title = 'Not set yet'
-        self.saved_cursor = (1,1)
+        self.title: str = 'Not set yet'
+        self.saved_cursor: tuple[int,int] = (1,1)
         self.stdscr.clear()
-        self.t_line = 0
-        self.what_line = 1
-        self.item_line = 1
-        self.list_header_line = 2
-        self.description_line = 2
-        self.prompt_line = curses.LINES - 1
-        self.lasthl = (False, None, None, None, None)
+        self.title_line: int = 0
+        self.what_line: int = 1
+        self.item_line: int = 1
+        self.list_header_line: int = 2
+        self.description_line: int = 2
+        self.prompt_line = curses.LINES - 1     # the lines are zero-based indexing
+        # self.lasthl = (False, [(0,0,0)], 0, 0, 0)
 
-    def bell(self):
+    def bell(self) -> None:
        curses.beep()
         #self.putstr('\07')
 
-    def choice_at(self, line, col, choices, clear):
+    def choice_at(self, line: int, col:int, choices:list[str], clear: bool) -> str:
         letters = ''
         nchoices = len(choices)
         choicen = 0
@@ -71,30 +77,43 @@ class CmdWindow:
                 self.getch(cnst.ANY)
                 self.clrln(line-1)
 
-    def clear(self):
+    def clear(self) -> None:
         self.putstr('\x1B[2J')
-        self.lasthl = (False, None, None, None, None)
+        # self.lasthl = (False, list[tuple[str]], 0, 0, 0)
 
-    def clrln(self, line):
+    def clrln(self, line: int) -> None:
         self.stdscr.move(line, 1)
         self.stdscr.clrtoeol()
         self.stdscr.refresh()
         #self.putstr('\x1B[0K')
 
-    def clrtoend(self, line, col):
+    def clrtoend(self, line: int, col: int) -> None:
         self.stdscr.move(line, col)
         self.stdscr.clrtobot()
         self.stdscr.refresh()
         #self.putstr('\x1B[0J')
-        self.lasthl = (False, None, None, None, None)
+        # self.lasthl = (False, list[tuple[str]], 0, 0, 0)
 
-    def double_check_list(self, members, candidate, which_col):
+    def double_check_list(self, members: list[tuple[str]], candidate: str, which_col: int) -> tuple[str] | None:
         for member in members:
             if member[which_col] == candidate:
                 return member
         return None
 
-    def getch(self, which):
+    def errorHandler(self, msg: str | None, msgs: list[str] | None) -> None:
+        self.restart()
+        if msg != None:
+            self.str_at(self.what_line, 1, msg)
+        elif msgs != None:
+            self.select_from_list(msgs, cnst.DSPLYRAWSTR, None, "Warnings", self.what_line, False)
+        self.prompt('Press any key to continue...')
+        self.getch(cnst.ANY)
+        self.restart()
+
+    def prompter(self, msg: str) -> None:
+        self.str_at(self.prompt_line, 1, msg)
+
+    def getch(self, which: int) -> str:
         while True:
             key = self.stdscr.getkey()
             if which & cnst.ANY:
@@ -126,7 +145,7 @@ class CmdWindow:
             else:
                 self.bell()
 
-    def getloc(self):
+    def getloc(self) -> tuple[int, int]:
         loc = self.stdscr.getyx()
         # locstr = ''
         # self.putstr('\x1B[6n')
@@ -141,10 +160,10 @@ class CmdWindow:
         self.curx = loc[1]
         return loc
 
-    def getstr(self):
+    def getstr(self) -> str | None:
         loc = self.getloc()
         newstr = ''
-        c = 0
+        c = ''
         while True:
             c = self.getch(cnst.NL | cnst.BS | cnst.PRINTABLE | cnst.SPACE)
             if c == '\n':
@@ -159,8 +178,9 @@ class CmdWindow:
                 continue
             newstr += c
             self.putstr(c)
+        return newstr
 
-    def getstr_at(self,line,col,prompt):
+    def getstr_at(self, line: int, col: int, prompt: str) -> str | None:
         self.clrtoend(line, col)
         if prompt:
             self.str_at(line, col, prompt + ': ')
@@ -168,47 +188,47 @@ class CmdWindow:
         self.clrln(line)
         return newstr
 
-    def item_choice_str(self, str):
+    def item_choice_str(self, astr: str) -> None:
         self.clrtoend(self.item_line, 1)
-        self.str_at(self.item_line, 1, str)
+        self.str_at(self.item_line, 1, astr)
         self.stdscr.refresh()                   #TODO redundant
 
-    def high_lite_lst_mbr(self, members, startline, index, mindex, hlen):
-        self.unhighlight(mindex)
-        member = members[index][mindex]
-        hlchars = member[0:hlen]
-        self.str_at(startline+index, 1, hlchars, curses.A_BOLD) #todo need to account for what column we are searching
-        self.lasthl = (True, members, startline, index, hlen)
+    # def high_lite_lst_mbr(self, members: list[tuple[str]], startline: int, index: int, mindex: int, hlen: int) -> None:
+    #     self.unhighlight(mindex)
+    #     member = members[index][mindex]
+    #     hlchars = member[0:hlen]
+    #     self.str_at(startline+index, 1, hlchars, curses.A_BOLD) #todo need to account for what column we are searching
+    #     self.lasthl = (True, members, startline, index, hlen)
         
 
-    def move(self, y, x):
+    def move(self, y: int, x: int) -> None:
         seq = '\x1B[' + repr(y) + ';' + repr(x) + 'H'
         self.putstr(seq)
 
-    def prompt(self, prompt):
+    def prompt(self, prompt: str) -> None:
         self.clrtoend(self.prompt_line, 1)
         self.str_at(self.prompt_line, 1, prompt)
         self.stdscr.refresh()
 
-    def putstr(self, astr):
+    def putstr(self, astr: str) -> None:
         self.stdscr.addstr(astr)
         self.stdscr.refresh()
 
-    def restart(self):
+    def restart(self) -> None:
         self.stdscr.clear()
-        self.str_at(self.t_line,1, self.title)
+        self.str_at(self.title_line,1, self.title)
         self.stdscr.refresh()
-        self.lasthl = (False, None, None, None, None)   #TODO do we still need this
+        # self.lasthl = (False, list[tuple[str]], 0, 0, 0)   #TODO do we still need this
 
-    def restore_loc(self):
+    def restore_loc(self) -> None:
         self.stdscr.move(self.saved_cursor[0], self.saved_cursor[1])
         #self.putstr('\x1B8')
         
-    def save_loc(self):
+    def save_loc(self) -> None:
         self.saved_cursor = self.stdscr.getyx()
         #self.putstr('\x1B7')
 
-    def set_list_heading(self, title):
+    def set_list_heading(self, title: str) -> None:
         # Clear the screen from startline and set the title of the list
         #members.append((-1, 'new '+title))
         self.clrtoend(self.list_header_line, 1)
@@ -221,20 +241,22 @@ class CmdWindow:
     # startline = The line on which to start the list, the heading is placed on the start line, 
     # start_line is bumped by 1 when returned by paint_list
     # title = is name of the objects in the list
-    # members = a list of objects that will be chosen from. Each member is a tuple with any number 
+    # members = a list of objects that will be chosen from. Each member is a ListMember with any number 
     # of columns. One column or all columns can be displayed
     # mindex = is the 0 based index of the column will be displayed and chosen from. mindex can 
-    # also carry special values to sleect special behaviors. Behaviors are implemented by paint_list. 
+    # also carry special values to select special behaviors. Behaviors are implemented by paint_list. 
     # Currently only one, -1 means display all columns. This will also affect list search matching.
     # When a specific column has been specified, matching is always done from the first character. 
-    # When all columns are displayed, the match can occur anywhere in anycolumn.set
+    # When all columns are displayed, the match can occur anywhere in any column.
+    # Returns: 0-n if a list member is selected, cnst.NEWOBJ if a new object is created, or cnst.CANCELED 
+    # if the user cancels the selection.
  
-    def select_from_list(self, tuple_list, display_index, preselect, list_header, header_at, new_allowed):
+    def select_from_list(self, members: Sequence[ListMemberProtocol], display_what: int, preselect: str | int, list_header: str, header_at: int, new_allowed: bool) -> int:
         """
-        Displays a scrollable, selectable list of tuples in the terminal using curses.
-        Highlights the current selection with a '>' marker. If display_index == -1,
-        shows all tuple members joined by commas.
-
+        Displays a scrollable, selectable list of ListMembers in the terminal using curses.
+        Highlights the current selection with a '>' marker. If display_what == -1,
+        shows all ListMembers joined by commas.
+        Returns the selected index or cnst.CANCELED  or cnst.NEWOBJ, search_buffer if a new object is created.
         Assumes self.stdscr is a curses window object.
         """
         curses.curs_set(0)
@@ -242,29 +264,27 @@ class CmdWindow:
         height, width = self.stdscr.getmaxyx()
         max_list_lines = height - (header_at + 1 + 1)  # Header_at + 1(zero base) + input line
         if type(preselect) is int:
-            for i in range(0,len(tuple_list)):
-                if tuple_list[i][0] == preselect:
+            for i in range(0,len(members)):
+                if members[i].id == preselect:
+                    selected_index = i
+                    break
+            else: 
+                selected_index = 0
+        elif type(preselect) is str:
+            selected_index = -1
+            for i, member in enumerate(members):
+                if member.has_str(preselect):
                     selected_index = i
                     break
             else:
                 selected_index = 0
-        elif type(preselect) is str:
-            selected_index = -1
-            for i in range(0, len(tuple_list)):
-                row = tuple_list[i]
-                for j in range(0, len(row)):
-                    if type(row[j]) is str and row[j] == preselect:
-                        selected_index = i
-                        break
-                if selected_index >= 0:
-                    break
-            else:
-                selected_index = 0
+        else:
+            selected_index = 0
 
         scroll_pos = 0
         search_buffer = ""
         search_direction = None
-        match_positions = []
+        match_positions: list[int] = []
         match_cursor = 0
 
 
@@ -276,21 +296,25 @@ class CmdWindow:
             self.str_at(header_at, 2, list_header[:width-4], curses.A_BOLD)
 
             # Determine visible range
-            visible_items = tuple_list[scroll_pos:scroll_pos + max_list_lines]
+            visible_items = members[scroll_pos:scroll_pos + max_list_lines]
 
             #self.str_at(height - 2, 2, f"Selected index: {selected_index}, Scroll pos: {scroll_pos}"[:width-4])
 
             for i, item in enumerate(visible_items):
                 y = i + header_at + 1           # list starts on the next line after the header
                 actual_index = scroll_pos + i
-
-                if display_index == -1:
-                    display_text = ", ".join(str(x) for x in item)
-                else:
-                    try:
-                        display_text = str(item[display_index])
-                    except IndexError:
-                        display_text = "<Index out of range>"
+                
+                match display_what:
+                    case cnst.DSPLYALL:
+                        display_text = item.str_all()
+                    case cnst.DSPLYNAME:
+                        display_text = item.str_name()
+                    case cnst.DSPLYSTR:
+                        display_text = item.str_name()
+                    case cnst.DSPLYRAWSTR:
+                        display_text = str(item)
+                    case _:
+                        assert(False)           # programming error, should not happen
 
                 prefix = "> " if actual_index == selected_index else "  "
 
@@ -341,8 +365,8 @@ class CmdWindow:
             self.stdscr.refresh()
 
             key = self.stdscr.getch()
-            key_name = curses.keyname(key)
-            if key == curses.KEY_UP or key == curses.KEY_A2:
+            #key_name = curses.keyname(key)
+            if key == curses.KEY_UP or key == MyCurses.KEY_A2: # type: ignore[attr-defined]
                 match_cursor = 0        # when using arrow keys, searches will always start from the left
                 search_direction = None
                 if selected_index > 0:
@@ -350,58 +374,69 @@ class CmdWindow:
                     if selected_index < scroll_pos:
                         scroll_pos -= 1
 
-            elif key == curses.KEY_DOWN or key == curses.KEY_C2:
+            elif key == curses.KEY_DOWN or key == MyCurses.KEY_C2: 
                 match_cursor = 0        # when using arrow keys, searches will always start from the left
                 search_direction = None
-                if selected_index < len(tuple_list) - 1:
+                if selected_index < len(members) - 1:
                     selected_index += 1
                     if selected_index >= scroll_pos + max_list_lines:
                         scroll_pos += 1
 
-            elif key in (ord('\n'), curses.KEY_ENTER, curses.PADENTER):
-                if len(tuple_list) == 0:
-                    return None
-                return tuple_list[selected_index]
+
+            elif key in (ord('\n'), curses.KEY_ENTER, MyCurses.PADENTER):  # type: ignore[attr-defined]
+                if len(members) == 0:
+                    return cnst.CANCELED
+                return selected_index
 
             elif key  == 27:  # Q or q or ESC
-                return None
+                return cnst.CANCELED
 
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 search_buffer = search_buffer[:-1]
 
             elif 32 <= key <= 126:  # Printable ASCII, including space
-                #if len(tuple_list) == 0:
-                #    return None
+                #if len(members) == 0:
+                #    return cnst.CANCELED
+
+
 
                 search_buffer += chr(key)
 
                 query = search_buffer.lower()
 
                 # Check if current selection still matches
-                try:
-                    if display_index == -1:
-                        current_text = ", ".join(str(x) for x in tuple_list[selected_index])
+                if len(members) == 0:
+                    current_text = ''
+                else:
+                    current_item = members[selected_index]
+                    if display_what == cnst.DSPLYALL:
+                        current_text = current_item.str_all()
+                    elif display_what ==  cnst.DSPLYNAME:
+                        current_text = current_item.str_name()
+                    elif display_what ==  cnst.DSPLYSTR:
+                        current_text = current_item.str_name()
                     else:
-                        current_text = str(tuple_list[selected_index][display_index])
-                except IndexError:
-                    current_text = ""
+                        assert(False)
 
                 if query not in current_text.lower():
                     # Search forward from next index
-                    list_len = len(tuple_list)
-                    start = 1 if list_len == 0 else (selected_index + 1) % len(tuple_list)
-                    #start = (selected_index + 1) % len(tuple_list)
+                    list_len = len(members)
+                    start = 1 if list_len == 0 else (selected_index + 1) % len(members)
+                    #start = (selected_index + 1) % len(members)
                     match_index = None
 
-                    for i in range(len(tuple_list)):
-                        idx = (start + i) % len(tuple_list)
-                        if display_index == -1:
-                            display_text = ", ".join(str(x) for x in tuple_list[idx])
+                    for i in range(len(members)):
+                        idx = (start + i) % len(members)
+                        test_item = members[idx]
+                        if display_what == cnst.DSPLYALL:
+                            display_text = test_item.str_all()
+                        elif display_what ==  cnst.DSPLYNAME:
+                            display_text = test_item.str_name()
+                        elif display_what ==  cnst.DSPLYSTR:
+                            display_text = test_item.str_name()
                         else:
-                            try:
-                                display_text = str(tuple_list[idx][display_index])
-                            except IndexError:
-                                display_text = ""
+                            assert(False)
+
                         if query in display_text.lower():
                             match_index = idx
                             break
@@ -427,7 +462,7 @@ class CmdWindow:
                                     search_buffer = ''
                                     break
                                 else:
-                                    self.beep()
+                                    curses.beep()
                         else:
                             self.str_at(self.prompt_line, 1, 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
                             loc = self.getloc()
@@ -436,7 +471,10 @@ class CmdWindow:
                                 c = self.getch(cnst.PRINTABLE | cnst.NL | cnst.ESC | cnst.BS | cnst.LEFT)
                                 if c == '\n':
                                     self.clrtoend(header_at, 1)
-                                    return (cnst.NEWOBJ, search_buffer)
+                                    new_obj = String(id=cnst.NEWOBJ, string=search_buffer)    
+                                    members.append(new_obj)
+                                    return cnst.NEWOBJ
+                                
                                 elif c == '\x1B':
                                     self.clrln(height-2)
                                     search_buffer = ''
@@ -460,13 +498,13 @@ class CmdWindow:
                     # Jump to next line with match
                     match_cursor = 0    # when jumping to a new line
                     query = search_buffer.lower()
-                    for i in range(len(tuple_list)):
-                        idx = (selected_index + 1 + i) % len(tuple_list)
-                        if display_index == -1:
-                            display_text = ", ".join(str(x) for x in tuple_list[idx])
+                    for i in range(len(members)):
+                        idx = (selected_index + 1 + i) % len(members)
+                        if display_what == -1:
+                            display_text = ", ".join(str(x) for x in members[idx])
                         else:
                             try:
-                                display_text = str(tuple_list[idx][display_index])
+                                display_text = str(members[idx][display_what])
                             except IndexError:
                                 display_text = ""
                         if query in display_text.lower():
@@ -487,13 +525,13 @@ class CmdWindow:
                     #match_cursor = len(match_positions) - 1 # start with the last match in the new line
                     query = search_buffer.lower()
                     found = False
-                    for i in range(1, len(tuple_list)):
-                        idx = (selected_index - 1) % len(tuple_list)
-                        if display_index == -1:
-                            display_text = ", ".join(str(x) for x in tuple_list[idx])
+                    for i in range(1, len(members)):
+                        idx = (selected_index - 1) % len(members)
+                        if display_what == -1:
+                            display_text = ", ".join(str(x) for x in members[idx])
                         else:
                             try:
-                                display_text = str(tuple_list[idx][display_index])
+                                display_text = str(members[idx][display_what])
                             except IndexError:
                                 display_text = ""
                         if query in display_text.lower():
@@ -505,36 +543,20 @@ class CmdWindow:
                     if not found:
                         curses.beep()
 
-            elif key == 10 or key == curses.PADENTER:  # Enter key
-                return tuple_list[selected_index]
+            elif key == 10 or key == MyCurses.PADENTER:  # type: ignore[attr-defined]
+                return selected_index
 
             elif key in (ord('q'), ord('Q')):
-                return None
+                return cnst.CANCELED
 
 
-    def set_title(self, str):
-        self.title = str
+    def set_title(self, astr: str) -> None:
+        self.title = astr
 
-    def str_at(self, line, col, msg, attrib = curses.A_NORMAL):
+    def str_at(self, line: int, col: int, msg: str, attrib: int = curses.A_NORMAL) -> None:
         self.stdscr.addstr(line, col, msg, attrib)
         self.stdscr.refresh()
-        #self.move(x, y)
-        #self.putstr(msg)
 
-    def title(self, msg):
-        self.move(0, 0)
-        self.clrln()
-        self.putstr(msg)
-
-    def unhighlight(self, mindex):
-        if self.lasthl[0]:  # is there a highlight on the screen?
-            old_members = self.lasthl[1]
-            old_startline = self.lasthl[2]
-            old_index = self.lasthl[3]
-            old_hlen = self.lasthl[4]
-            member = old_members[old_index][mindex]
-            hlchars = member[0:old_hlen]
-            self.str_at(old_startline+old_index, 1, hlchars, curses.A_NORMAL)
 
 
 

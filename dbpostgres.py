@@ -1,5 +1,5 @@
 #import types
-#from xxlimited import Str
+from xxlimited import Str
 
 import psycopg2
 import cnst

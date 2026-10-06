@@ -9,11 +9,11 @@ import curses
 import os
 #from unittest import case
 
-from models import Item, ListMember, Category, Type, Subtype, String
 #from dbpostgres import Database
-from dbsqlite import Database
-from window import CmdWindow
-import cnst
+from inventory.src.dbsqlite import Database
+from inventory.src.models import Item, ListMember, Category, Type, Subtype, String
+from inventory.src.window import CmdWindow
+import inventory.src.cnst as cnst
 
 current_item: Item = Item.from_empty()
 current_cat: Category | None = None
@@ -25,26 +25,22 @@ current_location: String | None = None
 def main(stdscr: curses.window):
     global current_item
 
-  
-    # get database location from environment
-    pgaddress = os.getenv('PGADDRESS')
-    pgport = os.getenv('PGPORT')
-    if pgaddress == None:
-        pgaddress = 'localhost'
-    if pgport == None:
-        pgport = '5432'
-
     win = CmdWindow(stdscr)
     errorHandler = win.errorHandler
     prompter = win.prompter
+
+    db = Database(errorHandler, prompter, "inventory.db")
+
+    run_app(win, db)
+
+def run_app(win: CmdWindow, db: Database) -> None:
+    win.restore_loc()
+    current_item = Item.from_empty()
+
     # Print first screen
     win.set_title('Inventory program, Ver 0.01')
     win.restart()
     win.save_loc()
-
-    db = Database(errorHandler, prompter, pgaddress,pgport)
-    win.restore_loc()
-    current_item = Item.from_empty()
 
     while(True):
         win.restart()
@@ -238,7 +234,7 @@ def new_item(win: CmdWindow, db: Database) -> Item | None:
     item_at = win.getloc()
 
     # Get an existing or new subtype ################################################
-    subtypes = db.get_subtypes_for([type_id])
+    subtypes = db.get_subtypes_for_types([type_id])
     selected_stype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, type_id, True)
 
     if selected_stype is None:
@@ -411,7 +407,7 @@ def find_item_by_cat_type_sub(win: CmdWindow, db: Database) -> Item | None:
 
     win.restart()
     win.str_at(win.what_line, 1, 'Find item by category '+selected_cat.c_name+ ', type '+selected_type.t_name+ ' and which subtype:')
-    subtypes = db.get_subtypes_for([selected_type.id])
+    subtypes = db.get_subtypes_for_types([selected_type.id])
     selected_subtype: Subtype | None = select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, False)
 
     if selected_subtype == None:
@@ -506,7 +502,7 @@ def update_item(win: CmdWindow, db: Database) -> None:
                     win.str_at(nline, 1, prefix + new_item.str_all())
 
                 # Get an existing or new subtype
-                subtypes = db.get_subtypes_for([new_item.type_id])
+                subtypes = db.get_subtypes_for_types([new_item.type_id])
 
                 if new_item.type_id != current_item.type_id:    # if type_id not equal type_id in current_item 
                     preselect = 0                        #   then preselect the first subtype
@@ -598,15 +594,15 @@ def update_item(win: CmdWindow, db: Database) -> None:
 
             # Save item to database
             if choice == 'U' and dirty:
-                db.update_item(new_item)
-                current_item = new_item
                 win.clrln(uline)
-                win.str_at(uline, 1, 'Updating item: '+new_item.str_all()+'.')
+                if db.update_item(new_item):
+                    current_item = new_item
+                    win.str_at(uline, 1, 'Updating item: '+new_item.str_all()+'.')
+                else:
+                    win.str_at(uline, 1, 'Error updating item: '+new_item.str_all()+'.')
+                    win.str_at(win.prompt_line,1,'Press any key to continue...')
+                    win.getch(cnst.ANY)
                 return 
-
-    win.str_at(win.prompt_line,1,'Press any key to continue...')
-    win.getch(cnst.ANY)
-    return
 
 def udpate_category(win: CmdWindow, db: Database) -> None:
     win.restart()
@@ -626,7 +622,10 @@ def udpate_category(win: CmdWindow, db: Database) -> None:
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_cat(selected_cat.id, new_value)
+        if not db.update_cat(selected_cat.id, new_value):
+            win.str_at(win.prompt_line,1,'Error updating category: '+selected_cat.c_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
 
 def update_type(win: CmdWindow, db: Database) -> None:
     win.restart()
@@ -652,7 +651,10 @@ def update_type(win: CmdWindow, db: Database) -> None:
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_type(selected_type.id, new_value)
+        if not db.update_type(selected_type.id, new_value):
+            win.str_at(win.prompt_line,1,'Error updating type: '+selected_type.t_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
 
 
 def update_subtype(win: CmdWindow, db: Database) -> None:
@@ -673,7 +675,10 @@ def update_subtype(win: CmdWindow, db: Database) -> None:
     new_value = win.getstr_at(nline,1,"New value")
 
     if new_value != None:
-        db.update_subtype(selected_subtype.id, new_value)
+        if not db.update_subtype(selected_subtype.id, new_value):
+            win.str_at(win.prompt_line,1,'Error updating subtype: '+selected_subtype.st_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
 
 
 def delete_something(win: CmdWindow, db: Database) -> None:
@@ -705,7 +710,10 @@ def delete_item(win: CmdWindow, db: Database) -> None:
     win.str_at(win.prompt_line-1, 1, 'Delete:  '+selected_item.str_all()+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_item(selected_item.id)
+        if not db.delete_item(selected_item.id):
+            win.str_at(win.prompt_line,1,'Error deleting item: '+selected_item.str_all()+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
     return None
 
 def delete_category(win: CmdWindow, db: Database) -> None:
@@ -720,7 +728,10 @@ def delete_category(win: CmdWindow, db: Database) -> None:
     win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_cat)+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_cat(selected_cat.id)
+        if not db.delete_cat(selected_cat.id):
+            win.str_at(win.prompt_line,1,'Error deleting category: '+selected_cat.c_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
     return None
 
 def delete_type(win: CmdWindow, db: Database) -> None:
@@ -734,7 +745,10 @@ def delete_type(win: CmdWindow, db: Database) -> None:
     win.str_at(win.prompt_line-1, 1, 'Delete:'+repr(selected_type)+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_type(selected_type.id)
+        if not db.delete_type(selected_type.id):
+            win.str_at(win.prompt_line,1,'Error deleting type: '+selected_type.t_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
     return None
 
 def delete_subtype(win: CmdWindow, db: Database) -> None:
@@ -749,7 +763,10 @@ def delete_subtype(win: CmdWindow, db: Database) -> None:
     win.str_at(win.prompt_line-1, 1, 'Delete:'+selected_stype.str_all()+' ???')
     choice = win.choice_at(win.prompt_line, 1, ['&Yes','&No'], True)
     if choice == 'Y':
-        db.delete_stype(selected_stype.id)
+        if not db.delete_stype(selected_stype.id):
+            win.str_at(win.prompt_line,1,'Error deleting subtype: '+selected_stype.st_name+'.')
+            win.str_at(win.prompt_line+1,1,'Press any key to continue...')
+            win.getch(cnst.ANY)
     return None
 
 def new_something(win: CmdWindow, db: Database) -> Item |None:
@@ -776,7 +793,7 @@ def new_category(win: CmdWindow, db: Database) -> None:
     cats = db.get_categories()
     win.str_at(win.what_line,1,"If your new Category is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new category name and hit Enter.")
-    select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True)
+    select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True)  # Only the new category is returned, if any.  The database is updated in select_category().
 
 
 
@@ -795,11 +812,7 @@ def new_type(win: CmdWindow, db: Database) -> None:
     types = db.get_types_for_cat(selected_cat.id)
     win.str_at(win.what_line,1,"If your new Type is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new Type name and hit Enter.")
-    selected_type: Type | None = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
-
-    if selected_type == None:
-        return
-
+    select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False) # Only the new type is returned, if any.  The database is updated in select_type().
 
 def new_subtype(win: CmdWindow, db: Database) -> None:
     win.str_at(win.what_line,1,"A new SubType must belong to an existing Category and Type. Please select")
@@ -818,10 +831,10 @@ def new_subtype(win: CmdWindow, db: Database) -> None:
         return
 
     win.restart()
-    subtypes = db.get_subtypes_for([selected_type.id])
+    subtypes = db.get_subtypes_for_types([selected_type.id])
     win.str_at(win.what_line,1,"If your new SubType is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new SubType name and hit Enter.")
-    select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, True)
+    select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, True) # Only the new subtype is returned, if any.  The database is updated in select_stype().
 
 
 
@@ -925,7 +938,7 @@ def show_items_where_subtype_eq(win: CmdWindow, db: Database) -> None:
         return None
     
     win.restart()
-    items = db. get_items_by_stype(selected_stype.id)
+    items = db.get_items_by_stype(selected_stype.id)
     selected_item: Item | None = select_item(win, db, items, cnst.DSPLYALL, 0, win.list_header_line)
 
     if selected_item is not None:

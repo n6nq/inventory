@@ -14,7 +14,8 @@ PRINTABLE = 256    # ctrl_a is \x01
 NUMBER = 512       # number is \d 
 SPACE = 1024
 BS = 2048
-ANY  = 4096
+F2F3 = 4096
+ANY  = 8192
 
 NEWOBJ  = -1    # return values from select_from_list which 
 CANCELED = -2   # normally returns
@@ -31,12 +32,33 @@ BOX = 4
 LOC = 5
 DESC = 6
 
-# characters
-ESCAPE = '\x1b'
-BACKSPACE = '\x08'
-
 # list display stype
 DSPLYALL = -1
 DSPLYSTR = 0
 DSPLYNAME = 1
 DSPLYRAWSTR = 2
+
+# used values from curses and screenfake.py
+A_BOLD = 2097152
+A_NORMAL = 0
+A_REVERSE = 262144
+BACKSPACE = 127
+CTRL_H = '\x08'
+CTRL_J = 10
+#DOWN = 258
+ENTER = 10
+ESCAPE = '\x1b'
+KEY_A2 = 450
+KEY_B1 = 452
+KEY_B3 = 454
+KEY_BACKSPACE = 263
+KEY_C2 = 456
+KEY_DOWN = 258
+KEY_ENTER = 343
+KEY_F2 = 266
+KEY_F3 = 267
+KEY_UP = 259
+#LEFT = 260
+PADENTER = 10
+#RIGHT = 261
+#UP = 259

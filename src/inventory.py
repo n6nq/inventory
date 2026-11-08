@@ -2,6 +2,7 @@
 #import select
 #from ast import Continue
 #from ast import Sub
+from re import S
 from typing import cast
 
 #import psycopg2
@@ -14,6 +15,7 @@ from inventory.src.dbsqlite import Database
 from inventory.src.models import Item, ListMember, Category, Type, Subtype, String
 from inventory.src.window import CmdWindow
 import inventory.src.cnst as cnst
+from inventory.src.screenprotocol import ScreenProtocol
 
 current_item: Item = Item.from_empty()
 current_cat: Category | None = None
@@ -22,10 +24,12 @@ current_subtype: Subtype | None = None
 current_box: String | None = None
 current_location: String | None = None
 
-def main(stdscr: curses.window):
+def main(screen: ScreenProtocol):
     global current_item
 
-    win = CmdWindow(stdscr)
+    curses.curs_set(0)  # Hide the cursor
+       
+    win = CmdWindow(screen)
     errorHandler = win.errorHandler
     prompter = win.prompter
 
@@ -68,7 +72,7 @@ def run_app(win: CmdWindow, db: Database) -> None:
 
                 show_something(win, db)
             case 'E':
-                exit()
+                return  #exit()
             case cnst.ESCAPE:
                 pass
             case _:
@@ -305,6 +309,7 @@ def new_item(win: CmdWindow, db: Database) -> Item | None:
     item_at = win.getloc()
 
     # Save item to database
+    #print(db.conn.execute("PRAGMA database_list").fetchall())
     ni = db.add_item(cat_id, type_id, sub_id, boxid, loc, descript)
     return ni
 
@@ -801,7 +806,7 @@ def new_category(win: CmdWindow, db: Database) -> None:
 def new_type(win: CmdWindow, db: Database) -> None:
     cats = db.get_categories()
     win.str_at(win.what_line,1,"A new Type must belong to an existing or new Category.")
-    win.str_at(win.what_line+1,1, " Please select or createthe new type's parent from the existing list.")
+    win.str_at(win.what_line+1,1, " Please select or create fthe new type's parent from the existing list.")
     selected_cat: Category | None = select_category(win, db, cats, cnst.DSPLYNAME, 0, win.what_line+2, True) 
 
     if selected_cat is None:
@@ -812,7 +817,7 @@ def new_type(win: CmdWindow, db: Database) -> None:
     types = db.get_types_for_cat(selected_cat.id)
     win.str_at(win.what_line,1,"If your new Type is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new Type name and hit Enter.")
-    select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, -1, False) # Only the new type is returned, if any.  The database is updated in select_type().
+    select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, selected_cat.id, True) # Only the new type is returned, if any.  The database is updated in select_type().
 
 def new_subtype(win: CmdWindow, db: Database) -> None:
     win.str_at(win.what_line,1,"A new SubType must belong to an existing Category and Type. Please select")
@@ -825,6 +830,7 @@ def new_subtype(win: CmdWindow, db: Database) -> None:
 
     win.restart()
     types = db.get_types_for_cat(selected_cat.id)
+    win.str_at(win.what_line,1,"A new SubType must belong to an existing Type. Please select a Type or type a new name.")
     selected_type = select_type(win, db, types, cnst.DSPLYNAME, 0, win.list_header_line, selected_cat.id, True)
 
     if selected_type == None:
@@ -834,7 +840,7 @@ def new_subtype(win: CmdWindow, db: Database) -> None:
     subtypes = db.get_subtypes_for_types([selected_type.id])
     win.str_at(win.what_line,1,"If your new SubType is in this list, you should just esc and use the existing one.")
     win.str_at(win.what_line+1,1, "Otherwise, just type the new SubType name and hit Enter.")
-    select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.list_header_line, selected_type.id, True) # Only the new subtype is returned, if any.  The database is updated in select_stype().
+    select_stype(win, db, subtypes, cnst.DSPLYNAME, 0, win.what_line+2, selected_type.id, True) # Only the new subtype is returned, if any.  The database is updated in select_stype().
 
 
 

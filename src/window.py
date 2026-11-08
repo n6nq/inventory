@@ -1,39 +1,36 @@
 ﻿# The command window class. Implemented with windows cmd window.
 # May be implemented with windows-curses later.
 
-import curses
+#import curses
+import time
+from inventory.src.screenprotocol import ScreenProtocol
 from collections.abc import Sequence
 import inventory.src.cnst as cnst
 from inventory.src.models import ListMemberProtocol, String
 
-
-class MyCurses:
-    PADENTER = 10
-    KEY_A2 = 450
-    KEY_B1 = 452
-    KEY_B3 = 454
-    KEY_C2 = 456
-
 class CmdWindow:
 
-    def __init__(self,stdscr: curses.window) -> None:
-        self.stdscr = stdscr
-        self.curx: int = 0
+    def __init__(self, screen: ScreenProtocol) -> None:
+        self.screen = screen
+        self.curx = 0
         self.cury = 0
         self.title: str = 'Not set yet'
-        self.saved_cursor: tuple[int,int] = (1,1)
-        self.stdscr.clear()
+        self.saved_cursor: tuple[int,int] = (0,0)
+        self.screen.clear()
         self.title_line: int = 0
         self.what_line: int = 1
         self.item_line: int = 1
         self.list_header_line: int = 2
         self.description_line: int = 2
-        self.prompt_line = curses.LINES - 1     # the lines are zero-based indexing
+        loc = self.screen.getmaxyx()
+        self.maxy = loc[0]
+        self.maxx = loc[1]
+        self.prompt_line = loc[0] - 1     # the lines are zero-based indexing
         # self.lasthl = (False, [(0,0,0)], 0, 0, 0)
 
     def bell(self) -> None:
-       curses.beep()
-        #self.putstr('\07')
+        self.flash()     #flash to single bad key
+        
 
     def choice_at(self, line: int, col:int, choices:list[str], clear: bool) -> str:
         letters = ''
@@ -58,15 +55,15 @@ class CmdWindow:
             choicen += 1
             letters += boldChar
 
-            self.str_at(line, ncol, first, curses.A_NORMAL)
+            self.str_at(line, ncol, first, cnst.A_NORMAL)
             ncol += len(first)
-            self.str_at(line, ncol, boldChar, curses.A_BOLD)
+            self.str_at(line, ncol, boldChar, cnst.A_BOLD)
             ncol += 1
             if choicen != nchoices:
                 rest += ', '
-            self.str_at(line, ncol, rest, curses.A_NORMAL)
+            self.str_at(line, ncol, rest, cnst.A_NORMAL)
             ncol += len(rest)
-        self.str_at(line, ncol, ', Esc', curses.A_NORMAL)
+        self.str_at(line, ncol, ', Esc', cnst.A_NORMAL)
 
         while(True):
             c = self.getch(cnst.A_Z | cnst.ESC).upper()
@@ -83,15 +80,15 @@ class CmdWindow:
         # self.lasthl = (False, list[tuple[str]], 0, 0, 0)
 
     def clrln(self, line: int) -> None:
-        self.stdscr.move(line, 1)
-        self.stdscr.clrtoeol()
-        self.stdscr.refresh()
+        self.screen.move(line, 1)
+        self.screen.clrtoeol()
+        self.screen.refresh()
         #self.putstr('\x1B[0K')
 
     def clrtoend(self, line: int, col: int) -> None:
-        self.stdscr.move(line, col)
-        self.stdscr.clrtobot()
-        self.stdscr.refresh()
+        self.screen.move(line, col)
+        self.screen.clrtobot()
+        self.screen.refresh()
         #self.putstr('\x1B[0J')
         # self.lasthl = (False, list[tuple[str]], 0, 0, 0)
 
@@ -106,7 +103,7 @@ class CmdWindow:
         if msg != None and msg != "NORAISE":
             self.str_at(self.what_line, 1, msg)
         elif msgs != None:
-            self.select_from_list(msgs, cnst.DSPLYRAWSTR, None, "Warnings", self.what_line, False)
+            self.select_from_list(msgs, cnst.DSPLYRAWSTR, 0, "Warnings", self.what_line, False)
         self.prompt('Press any key to continue...')
         self.getch(cnst.ANY)
         self.restart()
@@ -116,7 +113,7 @@ class CmdWindow:
 
     def getch(self, which: int) -> str:
         while True:
-            key = self.stdscr.getkey()
+            key = self.screen.getkey()
             if which & cnst.ANY:
                 return key
             elif which & cnst.A_Z and key.isalpha():
@@ -125,8 +122,8 @@ class CmdWindow:
                 return key
             elif which & cnst.SPACE and key == ' ':
                 return key
-            elif which & cnst.NL and key == '\n':
-                return key
+            elif which & cnst.NL and key == '\n' or key == '\r' or key == 'KEY_ENTER' or key == 'KEY_PADENTER':
+                return 'KEY_ENTER'
             elif which & cnst.TAB and key == '\t':
                 return key
             elif which & cnst.ESC and key == '\x1b':
@@ -139,37 +136,46 @@ class CmdWindow:
                 return key
             elif which & cnst.RIGHT and key == 'KEY_RIGHT' or key == 'KEY_B3':
                 return key
-            elif which & cnst.PRINTABLE and key.isprintable():
+            elif which & cnst.BS and key == '\x08' or key == 'KEY_BACKSPACE':
                 return key
-            elif which & cnst.BS and key == '\x08':
+            elif which & cnst.F2F3 and key == 'KEY_F(2)' or key == 'KEY_F(3)':
+                return key
+            elif which & cnst.PRINTABLE and key.isprintable():
                 return key
             else:
                 self.bell()
 
     def getloc(self) -> tuple[int, int]:
-        loc = self.stdscr.getyx()
+        loc = self.screen.getyx()
         self.cury = loc[0]
         self.curx = loc[1]
         return loc
 
     def getstr(self) -> str | None:
-        loc = self.getloc()
+        originalloc = self.getloc()
+        loc = originalloc
         newstr = ''
         c = ''
         while True:
             c = self.getch(cnst.NL | cnst.BS | cnst.PRINTABLE | cnst.SPACE)
-            if c == '\n':
+            #loc = self.getloc()    # TODO temp debug
+            if c == 'KEY_ENTER':
                 return newstr
             elif c == '\x1b':
                 return None
-            elif c == cnst.BACKSPACE:
+            elif c == 'KEY_BACKSPACE':   #TODO test for 8 or 127
                 newstr = newstr[:-1]
-                self.stdscr.move(loc[0],loc[1])
-                self.stdscr.clrtoeol()
+                self.screen.move(originalloc[0], originalloc[1])
+                #loc = self.getloc()    # TODO temp debug
+                self.screen.clrtoeol()
+                loc = self.getloc()    # TODO temp debug
                 self.putstr(newstr)
+                loc = self.getloc()    # TODO temp debug
                 continue
             newstr += c
+            self.screen.move(loc[0], loc[1])
             self.putstr(c)
+            loc = self.getloc()    # TODO temp debug
         return newstr
 
     def getstr_at(self, line: int, col: int, prompt: str) -> str | None:
@@ -183,7 +189,7 @@ class CmdWindow:
     def item_choice_str(self, astr: str) -> None:
         self.clrtoend(self.item_line, 1)
         self.str_at(self.item_line, 1, astr)
-        self.stdscr.refresh()                   #TODO redundant
+        self.screen.refresh()                   #TODO redundant
 
     # def high_lite_lst_mbr(self, members: list[tuple[str]], startline: int, index: int, mindex: int, hlen: int) -> None:
     #     self.unhighlight(mindex)
@@ -193,31 +199,31 @@ class CmdWindow:
     #     self.lasthl = (True, members, startline, index, hlen)
         
 
-    def move(self, y: int, x: int) -> None:
-        seq = '\x1B[' + repr(y) + ';' + repr(x) + 'H'
-        self.putstr(seq)
+    # def move(self, y: int, x: int) -> None:
+    #     seq = '\x1B[' + repr(y) + ';' + repr(x) + 'H'
+    #     self.putstr(seq)
 
     def prompt(self, prompt: str) -> None:
         self.clrtoend(self.prompt_line, 1)
         self.str_at(self.prompt_line, 1, prompt)
-        self.stdscr.refresh()
+        self.screen.refresh()
 
     def putstr(self, astr: str) -> None:
-        self.stdscr.addstr(astr)
-        self.stdscr.refresh()
+        self.screen.addstr(self.cury, self.curx, astr, cnst.A_NORMAL)
+        self.screen.refresh()
 
     def restart(self) -> None:
-        self.stdscr.clear()
+        self.screen.clear()
         self.str_at(self.title_line,1, self.title)
-        self.stdscr.refresh()
+        self.screen.refresh()
         # self.lasthl = (False, list[tuple[str]], 0, 0, 0)   #TODO do we still need this
 
     def restore_loc(self) -> None:
-        self.stdscr.move(self.saved_cursor[0], self.saved_cursor[1])
+        self.screen.move(self.saved_cursor[0], self.saved_cursor[1])
         #self.putstr('\x1B8')
         
     def save_loc(self) -> None:
-        self.saved_cursor = self.stdscr.getyx()
+        self.saved_cursor = self.screen.getyx()
         #self.putstr('\x1B7')
 
     def set_list_heading(self, title: str) -> None:
@@ -249,11 +255,11 @@ class CmdWindow:
         Highlights the current selection with a '>' marker. If display_what == -1,
         shows all ListMembers joined by commas.
         Returns the selected index or cnst.CANCELED  or cnst.NEWOBJ, search_buffer if a new object is created.
-        Assumes self.stdscr is a curses window object.
+        Assumes self.screen is a curses window object.
         """
-        curses.curs_set(0)
-        self.stdscr.keypad(True)
-        height, width = self.stdscr.getmaxyx()
+        
+        self.screen.keypad(True)
+        height, width = self.screen.getmaxyx()
         max_list_lines = height - (header_at + 1 + 1)  # Header_at + 1(zero base) + input line
         if type(preselect) is int:
             for i in range(0,len(members)):
@@ -284,8 +290,8 @@ class CmdWindow:
             self.clrtoend(header_at, 1)
 
             # Title and header
-            #self.str_at(0, 2, self.title[:width-4], curses.A_BOLD)
-            self.str_at(header_at, 2, list_header[:width-4], curses.A_BOLD)
+            #self.str_at(0, 2, self.title[:width-4], cnst.A_BOLD)
+            self.str_at(header_at, 2, list_header[:width-4], cnst.A_BOLD)
 
             # Determine visible range
             visible_items = members[scroll_pos:scroll_pos + max_list_lines]
@@ -308,6 +314,7 @@ class CmdWindow:
                     case _:
                         assert(False)           # programming error, should not happen
 
+                display_text = display_text[0:self.maxx-4]
                 prefix = "> " if actual_index == selected_index else "  "
 
                 if actual_index == selected_index and search_buffer:
@@ -342,7 +349,7 @@ class CmdWindow:
                         x += len(prefix)
                         self.str_at(y, x, before[:width - x - 1])
                         x += len(before)
-                        self.str_at(y, x, match[:width - x - 1], curses.A_REVERSE)
+                        self.str_at(y, x, match[:width - x - 1], cnst.A_REVERSE)
                         x += len(match)
                         self.str_at(y, x, after[:width - x - 1])
                     else:
@@ -354,11 +361,12 @@ class CmdWindow:
             input_prompt = f"Search: {search_buffer}  (↑↓ to scroll, F3=Next, F2=Prev, Enter=Select, ESC=Cancel)"
             self.str_at(self.prompt_line, 2, input_prompt[:width-4])
 
-            self.stdscr.refresh()
+            self.screen.refresh()
 
-            key = self.stdscr.getch()
+            which:int = cnst.A_Z | cnst.NUMBER | cnst.UP | cnst.DOWN | cnst.NL | cnst.ESC | cnst.BS | cnst.PRINTABLE | cnst.F2F3
+            key: str = self.getch(which)
             #key_name = curses.keyname(key)
-            if key == curses.KEY_UP or key == MyCurses.KEY_A2: # type: ignore[attr-defined]
+            if key == 'KEY_UP' or key == 'KEY_A2': # type: ignore[attr-defined]
                 match_cursor = 0        # when using arrow keys, searches will always start from the left
                 search_direction = None
                 if selected_index > 0:
@@ -366,7 +374,7 @@ class CmdWindow:
                     if selected_index < scroll_pos:
                         scroll_pos -= 1
 
-            elif key == curses.KEY_DOWN or key == MyCurses.KEY_C2: 
+            elif key == 'KEY_DOWN' or key == 'KEY_C2': 
                 match_cursor = 0        # when using arrow keys, searches will always start from the left
                 search_direction = None
                 if selected_index < len(members) - 1:
@@ -375,24 +383,73 @@ class CmdWindow:
                         scroll_pos += 1
 
 
-            elif key in (ord('\n'), curses.KEY_ENTER, MyCurses.PADENTER):  # type: ignore[attr-defined]
+            elif key in ("\n", 'KEY_ENTER', 'PADENTER'):  # type: ignore[attr-defined]
                 if len(members) == 0:
                     return cnst.CANCELED
                 return selected_index
 
-            elif key  == 27:  # Q or q or ESC
+            elif key  == cnst.ESCAPE:  
                 return cnst.CANCELED
 
-            elif key in (curses.KEY_BACKSPACE, 127, 8):
+            elif key in ("KEY_BACKSPACE", "KEY_DC", cnst.CTRL_H):
                 search_buffer = search_buffer[:-1]
 
-            elif 32 <= key <= 126:  # Printable ASCII, including space
-                #if len(members) == 0:
-                #    return cnst.CANCELED
+            elif key == "KEY_F(3)":
+                search_direction = 'forward'
+                if match_positions and match_cursor + 1 < len(match_positions):
+                    match_cursor += 1
+                else:
+                    # Jump to next line with match
+                    match_cursor = 0    # when jumping to a new line
+                    query = search_buffer.lower()
+                    for i in range(len(members)):
+                        idx = (selected_index + 1 + i) % len(members)
+                        if display_what == -1:
+                            display_text = ", ".join(str(x) for x in members[idx])
+                        else:
+                            try:
+                                display_text = str(members[idx][display_what])
+                            except IndexError:
+                                display_text = ""
+                        if query in display_text.lower():
+                            selected_index = idx
+                            scroll_pos = max(0, selected_index - max_list_lines // 2)
+                            match_cursor = 0
+                            break
+                    else:
+                        self.screen.flash()  
 
+            elif key == "KEY_F(2)":
+                search_direction = 'backward'
+                if match_positions and match_cursor > 0:            # match_cursor is idx into match_positions of the match
+                    # Move to previous within the same line         # values in match positions indexes into current row were 
+                    match_cursor -= 1                               # search string was found
+                else:
+                    # Search backward for previous line with a match
+                    # match_cursor = len(match_positions) - 1 # start with the last match in the new line
+                    query = search_buffer.lower()
+                    found = False
+                    for i in range(1, len(members)+1):
+                        idx = (selected_index - i) % len(members)
+                        if display_what == -1:
+                            display_text = members[idx].str_all()
+                        else:
+                            try:
+                                display_text = str(members[idx][display_what])
+                            except IndexError:
+                                display_text = ""
+                        if query in display_text.lower():
+                            selected_index = idx
+                            scroll_pos = max(0, selected_index - max_list_lines // 2)
+                            match_cursor = -1    #YIKES
+                            found = True
+                            break
+                    if not found:
+                        self.flash()  # No previous match found, flash the screen
+                        
+            elif " " <= key <= "z":  # Printable ASCII, including space
 
-
-                search_buffer += chr(key)
+                search_buffer += key
 
                 query = search_buffer.lower()
 
@@ -449,19 +506,19 @@ class CmdWindow:
                             self.str_at(self.prompt_line, 1, 'New '+list_header+' are not allowed when searching? Escape to select existing '+ list_header+'.')
                             while True:
                                 c = self.getch(cnst.ESC)
-                                if c == '\x1B':
+                                if c == cnst.ESCAPE:
                                     self.clrln(height-2)    #todo  nothing there, not needed.
                                     search_buffer = ''
                                     break
                                 else:
-                                    curses.beep()
+                                    self.flash()
                         else:
                             self.str_at(self.prompt_line, 1, 'New '+list_header+'? Continue, Enter to complete, Escape to start over: ' + search_buffer)
                             loc = self.getloc()
-                            loc = (loc[0], loc[1]-len(search_buffer))
+                            startloc = (loc[0], loc[1]-len(search_buffer))
                             while True:
                                 c = self.getch(cnst.PRINTABLE | cnst.NL | cnst.ESC | cnst.BS | cnst.LEFT)
-                                if c == '\n':
+                                if c == 'KEY_ENTER':
                                     self.clrtoend(header_at, 1)
                                     new_obj = String(id=cnst.NEWOBJ, string=search_buffer)    
                                     members.append(new_obj)
@@ -471,71 +528,19 @@ class CmdWindow:
                                     self.clrln(height-2)
                                     search_buffer = ''
                                     break
-                                elif c == cnst.BACKSPACE or c == 'KEY_LEFT':
+                                elif c == "KEY_BACKSPACE" or c == 'KEY_LEFT':  #TODO test for 8 or 127
                                     search_buffer = search_buffer[:-1]
-                                    self.stdscr.move(loc[0],loc[1])
-                                    self.stdscr.clrtoeol()
-                                    self.putstr(search_buffer)
+                                    self.screen.move(startloc[0],startloc[1])
+                                    self.screen.clrtoeol()
+                                    #self.screen.move(startloc[0],startloc[1])
+                                    self.screen.addstr(startloc[0],startloc[1],search_buffer,cnst.A_NORMAL)
+                                    loc = self.getloc()
                                     continue
 
                                 self.putstr(c)
                                 search_buffer += c
-
-
-            elif key == curses.KEY_F3:
-                search_direction = 'forward'
-                if match_positions and match_cursor + 1 < len(match_positions):
-                    match_cursor += 1
-                else:
-                    # Jump to next line with match
-                    match_cursor = 0    # when jumping to a new line
-                    query = search_buffer.lower()
-                    for i in range(len(members)):
-                        idx = (selected_index + 1 + i) % len(members)
-                        if display_what == -1:
-                            display_text = ", ".join(str(x) for x in members[idx])
-                        else:
-                            try:
-                                display_text = str(members[idx][display_what])
-                            except IndexError:
-                                display_text = ""
-                        if query in display_text.lower():
-                            selected_index = idx
-                            scroll_pos = max(0, selected_index - max_list_lines // 2)
-                            match_cursor = 0
-                            break
-                    else:
-                        curses.beep()
-
-            elif key == curses.KEY_F2:
-                search_direction = 'backward'
-                if match_positions and match_cursor > 0:
-                    # Move to previous within the same line
-                    match_cursor -= 1
-                else:
-                    # Search backward for previous line with a match
-                    #match_cursor = len(match_positions) - 1 # start with the last match in the new line
-                    query = search_buffer.lower()
-                    found = False
-                    for i in range(1, len(members)):
-                        idx = (selected_index - 1) % len(members)
-                        if display_what == -1:
-                            display_text = ", ".join(str(x) for x in members[idx])
-                        else:
-                            try:
-                                display_text = str(members[idx][display_what])
-                            except IndexError:
-                                display_text = ""
-                        if query in display_text.lower():
-                            selected_index = idx
-                            scroll_pos = max(0, selected_index - max_list_lines // 2)
-                            match_cursor = -1    #YIKES
-                            found = True
-                            break
-                    if not found:
-                        curses.beep()
-
-            elif key == 10 or key == MyCurses.PADENTER:  # type: ignore[attr-defined]
+                                loc = self.getloc()
+            elif key == 10 or key == cnst.PADENTER:  # type: ignore[attr-defined]
                 return selected_index
 
             elif key in (ord('q'), ord('Q')):
@@ -545,9 +550,16 @@ class CmdWindow:
     def set_title(self, astr: str) -> None:
         self.title = astr
 
-    def str_at(self, line: int, col: int, msg: str, attrib: int = curses.A_NORMAL) -> None:
-        self.stdscr.addstr(line, col, msg, attrib)
-        self.stdscr.refresh()
+    def str_at(self, line: int, col: int, msg: str, attrib: int = cnst.A_NORMAL) -> None:
+        self.screen.addstr(line, col, msg, attrib)
+        self.screen.refresh()
+
+    def flash(self) -> None:
+        loc = self.getloc()
+        self.str_at(loc[0], loc[1], '   ', cnst.A_REVERSE)
+        time.sleep(0.5  )
+        self.str_at(loc[0], loc[1], '   ', cnst.A_NORMAL)
+
 
 
 

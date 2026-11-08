@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from collections.abc import Callable
 from inventory.src.models import Category, Type, Subtype, Item, String
@@ -58,6 +59,14 @@ class Database():
     def add_item(self, cat_id: int, type_id: int, subtype_id: int, box: str, loc: str, descript: str) -> Item | None:
         row = None
         try:
+            # db_path = self.conn.execute("PRAGMA database_list").fetchall()[0][2]
+            # print(self.conn.execute("PRAGMA database_list").fetchall())
+            # print("Read-only?", self.conn.execute("PRAGMA read_only").fetchone())
+            # print("Journal mode:", self.conn.execute("PRAGMA journal_mode").fetchone())
+            # print("WAL file exists:", os.path.exists(db_path + "-wal"))
+            # print("SHM file exists:", os.path.exists(db_path + "-shm"))
+            # print("Journal file exists:", os.path.exists(db_path + "-journal"))
+            # print("Permissions:", oct(os.stat(db_path).st_mode))
             self.cur.execute('insert into item (cat, atype, subtype, box, loc, descript) values (?, ?, ?, ?, ?, ?) returning id, cat, atype, subtype, box, loc, descript;', 
                              (cat_id, type_id, subtype_id, box, loc, descript))
             row = self.cur.fetchone()
@@ -81,7 +90,7 @@ class Database():
             self.cur.execute('insert into type (t_name, cat) values (?, ?) returning id, t_name, cat;', (t_name, cat_id))
             row = self.cur.fetchone()
             atype = Type(id=row[0], t_name=row[1], cat_id=row[2])
-            self.prompter('Added type: ' + t_name + ' with id: ' + str(row[0]))
+            #self.prompter('Added type: ' + t_name + ' with id: ' + str(row[0]))
         except sqlite3.Error as e:
             self.handleDBError(e)
         return atype
@@ -92,7 +101,7 @@ class Database():
         try:
             self.cur.execute('insert into subtype (st_name, atype) values (?, ?) returning id, st_name, atype;', (st_name, type_id))
             row = self.cur.fetchone()
-            self.prompter('Added subtype: ' + st_name + ' with id: ' + str(row[0]))
+            #self.prompter('Added subtype: ' + st_name + ' with id: ' + str(row[0]))
             asubtype = Subtype(id=row[0], st_name=row[1], atype=row[2])
         except sqlite3.Error as e:
             self.handleDBError(e)
@@ -192,8 +201,6 @@ class Database():
         warnings: list[str] = []
         retvalue = True
         atype = self.get_type_for_id(type_id)
-        if cat:
-            warnings.append("Type "+atype.str_all()+" refers upward to Category "+cat.str_all())
         if len(items) > 0 or len(stypes) > 0:
             warnings.append("Before you can delete Type " + atype.str_all() + ", you need to delete or modify the following:")
             if len(items) > 0:
@@ -204,8 +211,11 @@ class Database():
                 warnings.append("SubTypes:",)
                 for stype in stypes:
                     warnings.append(stype.str_all())
+            if cat:
+                warnings.append("FYI: Type "+atype.str_all()+" refers upward to Category "+cat.str_all()+".")
+                warnings.append("     However, no change is need to"+cat.str_all()+" in order to delete "+atype.str_all()+".")
             retvalue = False
-        self.errHandler(None, warnings)
+            self.errHandler(None, warnings)
         return retvalue
     
     def stype_exists(self, stype_id: int) -> bool:
@@ -229,16 +239,16 @@ class Database():
         cat = self.get_cat_for_id(atype.cat_id)
 
         if len(items) > 0:
-            warnings: list[str] = ["The following items refer to SubType "+stype.str_all()+":"]
+            warnings: list[str] = ["The following items refer to SubType ("+stype.str_all()+"):"]
             for item in items:
-                warnings.append(item.str_all())
+                warnings.append("("+item.str_all()+")")
             
             warnings.append("")
             warnings.append("They must be deleted or they must reference a different subtype")
-            warnings.append("before SubType "+stype.str_all()+" can be deleted.")
+            warnings.append("before SubType ("+stype.str_all()+") can be deleted.")
 
             warnings.append("")
-            warnings.append("The parents of SubType "+stype.str_all()+" are Type "+repr(atype)+" and Category "+cat.str_all()+".")
+            warnings.append("The parents of SubType ("+stype.str_all()+") are Type ("+atype.str_all()+") and Category ("+cat.str_all()+").")
             warnings.append("They will not be affected by deleting or modifing the SubType.")
             self.errHandler("NORAISE", warnings)
             return False
@@ -302,8 +312,11 @@ class Database():
         try:
             self.cur.execute("select id, c_name from category where id = ?", (cat_id,))
             row = self.cur.fetchone()
-            cat = Category(id=row[0], c_name=row[1])
-            return cat
+            if row:
+                cat = Category(id=row[0], c_name=row[1])
+                return cat
+            else:
+                return Category(id=-1, c_name="Missing category for cat_id "+str(cat_id))
         except sqlite3.Error as e:
             return Category(id=-1, c_name="Missing category for cat_id "+str(cat_id)+": "+str(e)) 
 
@@ -337,7 +350,7 @@ class Database():
 	                            '  join category on item.cat = category.id '
 	                            '  join type on item.atype = type.id '
 	                            '  join subtype on item.subtype = subtype.id '
-                                '  order by category.c_name asc, type.t_name asc, subtype.st_name asc;')
+                                '  order by item.id asc;')
             rows = self.cur.fetchall()
 
             for row in rows:

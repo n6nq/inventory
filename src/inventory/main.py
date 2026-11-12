@@ -11,11 +11,11 @@ import os
 #from unittest import case
 
 #from dbpostgres import Database
-from inventory.src.dbsqlite import Database
-from inventory.src.models import Item, ListMember, Category, Type, Subtype, String
-from inventory.src.window import CmdWindow
-import inventory.src.cnst as cnst
-from inventory.src.screenprotocol import ScreenProtocol
+from inventory.dbsqlite import Database
+from inventory.models import Item, ListMember, Category, Type, Subtype, String
+from inventory.window import CmdWindow
+import inventory.cnst as cnst
+from inventory.screenprotocol import ScreenProtocol
 
 current_item: Item = Item.from_empty()
 current_cat: Category | None = None
@@ -54,15 +54,15 @@ def run_app(win: CmdWindow, db: Database) -> None:
         match choice:
             case 'I':
                 retobj = new_item(win, db)   #TODO add escape path to this function
-                if type(retobj) == Item:
+                if isinstance(retobj, Item):
                     current_item = retobj
             case 'N':
                 retobj = new_something(win, db)   #TODO add escape path to this function
-                if type(retobj) == Item:
+                if isinstance(retobj, Item):
                     current_item = retobj
             case 'F':
                 retobj = find_item(win, db)     #TODO implement this function
-                if type(retobj) == Item:
+                if isinstance(retobj, Item):
                     current_item = retobj
             case 'U':
                 update_something(win, db)

@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from collections.abc import Callable
-from inventory.src.models import Category, Type, Subtype, Item, String
+from inventory.models import Category, Type, Subtype, Item, String
 
 
 class Database():

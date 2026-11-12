@@ -1,6 +1,6 @@
 from typing import Callable, Any
-import inventory.src.cnst as cnst
-from inventory.src.screenprotocol import ScreenProtocol
+import inventory.cnst as cnst
+from inventory.screenprotocol import ScreenProtocol
 
 # Screen sizes
 SCREEN_MAXX = 80

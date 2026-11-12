@@ -3,10 +3,10 @@
 
 #import curses
 import time
-from inventory.src.screenprotocol import ScreenProtocol
+from inventory.screenprotocol import ScreenProtocol
 from collections.abc import Sequence
-import inventory.src.cnst as cnst
-from inventory.src.models import ListMemberProtocol, String
+import inventory.cnst as cnst
+from inventory.models import ListMemberProtocol, String
 
 class CmdWindow:
 

@@ -5,7 +5,7 @@ from pytest import TempPathFactory
 from inventory.dbsqlite import Database
 from inventory.models import Category, Type, Subtype, Item
 from externals import errorHandler, prompter, silent
-from asserts import assertIsInstance, assertIn, assertEqual, assertTrue
+from inventory.asserts import assertIsInstance, assertIn, assertEqual, assertTrue
 
 
 

@@ -6,7 +6,7 @@ import tempfile
 from collections.abc import Iterator
 from inventory.dbsqlite import Database
 from inventory.models import Category, Type, Subtype, Item, String
-from asserts import assertIsInstance, assertIn, assertEqual, assertTrue, assertFalse
+from inventory.asserts import assertIsInstance, assertIn, assertEqual, assertTrue, assertFalse
 from externals import errorHandler, prompter, silent
 
 catnames = ["cat1", "cat2", "cat3", "cat4", "cat5"]

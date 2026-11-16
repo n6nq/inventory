@@ -4,10 +4,11 @@ import pytest
 import sqlite3
 from inventory.dbsqlite import Database
 from inventory.models import Category, Type, Subtype, Item
-from asserts import assertIsInstance, assertEqual, assertTrue
+from inventory.asserts import assertIsInstance, assertEqual, assertTrue
 from inventory.main import run_app
 from inventory.screenfake import ScreenFake, Page
 from inventory.window import CmdWindow
+from inventory.stuff_db import stuff_db
 from externals import errorHandler, prompter
 import inventory.cnst as cnst
 from pytest import TempPathFactory
@@ -22,53 +23,53 @@ catnames = ["cat1", "cat2", "cat3", "cat4", "cat5"]
 typenames = [("type1", 1), ("type2", 2), ("type3", 3), ("type4", 4), ("type5", 5)]
 subtypenames = [("subtype1", 1), ("subtype2", 2), ("subtype3", 3), ("subtype4", 4), ("subtype5", 5)]
 
-def stuff_cats(db: Database) -> None:
-    try:
-        for name in catnames:
-            cat: Category | None = db.add_category(name)
-            # test for success
-            assertIsInstance(cat, Category)
-            if cat is not None:
-                assertEqual(cat.c_name, name)
-    except sqlite3.Error:
-        assertTrue(False) 
+# def stuff_cats(db: Database) -> None:
+#     try:
+#         for name in catnames:
+#             cat: Category | None = db.add_category(name)
+#             # test for success
+#             assertIsInstance(cat, Category)
+#             if cat is not None:
+#                 assertEqual(cat.c_name, name)
+#     except sqlite3.Error:
+#         assertTrue(False) 
         
-def stuff_types(db: Database) -> None:
-    try:
-        for name, cat_id in typenames:
-            atype: Type | None = db.add_type(name, cat_id)
-            # test for success
-            assertIsInstance(atype, Type)
-            if atype is not None:
-                assertEqual(atype.t_name, name)
-    except sqlite3.Error:
-        assertTrue(False) 
+# def stuff_types(db: Database) -> None:
+#     try:
+#         for name, cat_id in typenames:
+#             atype: Type | None = db.add_type(name, cat_id)
+#             # test for success
+#             assertIsInstance(atype, Type)
+#             if atype is not None:
+#                 assertEqual(atype.t_name, name)
+#     except sqlite3.Error:
+#         assertTrue(False) 
 
-def stuff_subtypes(db: Database) -> None:
-    try:
-        for name, type_id in subtypenames:
-            stype: Subtype | None = db.add_subtype(name, type_id)
-            # test for success
-            assertIsInstance(stype, Subtype)
-            if stype is not None:
-                assertEqual(stype.st_name, name)
-    except sqlite3.Error:
-        assertTrue(False) 
+# def stuff_subtypes(db: Database) -> None:
+#     try:
+#         for name, type_id in subtypenames:
+#             stype: Subtype | None = db.add_subtype(name, type_id)
+#             # test for success
+#             assertIsInstance(stype, Subtype)
+#             if stype is not None:
+#                 assertEqual(stype.st_name, name)
+#     except sqlite3.Error:
+#         assertTrue(False) 
         
-def stuff_items(db: Database) -> None:
-    try:
-        for i in range(1, N_ITEMS +1):
-            cts = N_CATS if (i % N_CATS) == 0 else (i % N_CATS)     # cat, type, subtype index, there are only 5 of 
-            item: Item | None = db.add_item(cts, cts, cts, f"X{cts}", "closet", f"some stuff{i}")
-            # test for success
-            assertIsInstance(item, Item)
-            if item is not None:
-                assertEqual(item.cat_id, cts)
-                assertEqual(item.type_id, cts)
-                assertEqual(item.sub_id, cts)
-                assertEqual(item.descript, f"some stuff{i}")
-    except sqlite3.Error:
-        assertTrue(False)
+# def stuff_items(db: Database) -> None:
+#     try:
+#         for i in range(1, N_ITEMS +1):
+#             cts = N_CATS if (i % N_CATS) == 0 else (i % N_CATS)     # cat, type, subtype index, there are only 5 of 
+#             item: Item | None = db.add_item(cts, cts, cts, f"X{cts}", "closet", f"some stuff{i}")
+#             # test for success
+#             assertIsInstance(item, Item)
+#             if item is not None:
+#                 assertEqual(item.cat_id, cts)
+#                 assertEqual(item.type_id, cts)
+#                 assertEqual(item.sub_id, cts)
+#                 assertEqual(item.descript, f"some stuff{i}")
+#     except sqlite3.Error:
+#         assertTrue(False)
 
 class TstBits:
     def __init__(self, db: Database, win: CmdWindow, screen: ScreenFake):
@@ -85,14 +86,8 @@ def tstbits(tmp_path_factory: TempPathFactory):
     db_path = temp_dir / "test.db"
 
     database = Database(errorHandler, prompter, str(db_path))
-    assertIsInstance(database.conn, sqlite3.Connection)
-    assertIsInstance(database.cur, sqlite3.Cursor)
 
-    stuff_cats(database)
-    stuff_types(database)
-    stuff_subtypes(database)
-    stuff_items(database)
-
+    stuff_db(database)
 
     screen = ScreenFake()
     win = CmdWindow(screen)

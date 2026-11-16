@@ -1,16 +1,13 @@
-#import re
-#import select
-#from ast import Continue
-#from ast import Sub
-from re import S
-from typing import cast
+# main.py
 
-#import psycopg2
+from re import S
+from typing import cast, Callable
+
+
 import curses
 import os
-#from unittest import case
-
-#from dbpostgres import Database
+from tempfile import TemporaryDirectory
+from inventory import stuff_db
 from inventory.dbsqlite import Database
 from inventory.models import Item, ListMember, Category, Type, Subtype, String
 from inventory.window import CmdWindow
@@ -33,11 +30,19 @@ def main(screen: ScreenProtocol):
     errorHandler = win.errorHandler
     prompter = win.prompter
 
-    db = Database(errorHandler, prompter, "inventory.db")
+    test_db = True  # Set to True to use a temporary database for testing during debugging, False to use the production database
+    if test_db:
+        tmpdir = TemporaryDirectory()
+        db_path = tmpdir.name + "/test_inventory.db"
+        db = Database(errorHandler, prompter, db_path)
+        stuff_db.stuff_db(db)  # Populate the temporary database with test data
+    else:
+       db = Database(errorHandler, prompter, "inventory.db")
 
     run_app(win, db)
 
 def run_app(win: CmdWindow, db: Database) -> None:
+    global current_item
     win.restore_loc()
     current_item = Item.from_empty()
 
@@ -446,7 +451,8 @@ def update_item(win: CmdWindow, db: Database) -> None:
     global current_item
     if current_item.id == 0:
         win.restart()
-        win.str_at(win.what_line, 1, 'You need to select a current_item first. See the "Find" choice.')
+        win.str_at(win.what_line, 1, 'You need to select a current_item first. See the "Find" choice. Press any key to continue...')
+        win.getch(cnst.ANY)
     else:
         win.restart()
         uline = win.what_line
@@ -966,4 +972,4 @@ def show_subtypes(win: CmdWindow, db: Database) -> None:
     select_stype(win, db, stypes, cnst.DSPLYNAME, 0, win.list_header_line, -1, False)
 
 if __name__ == "__main__":
-    curses.wrapper(main)
+    curses.wrapper(cast(Callable[[curses.window], int], main))

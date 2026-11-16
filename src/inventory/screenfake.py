@@ -28,6 +28,23 @@ class Page:
                 return True
         return False
 
+    def find_first(self, string: str) -> tuple[int, int]:
+        for y in range(self.linecnt):
+            line: str = self.rows[y]
+            x = line.find(string)
+            if (x >= 0):
+                self.cursor = (y, x)
+                return (y, x)
+        return (-1, -1)
+    
+    def find_next(self, string: str) -> tuple[int, int]:
+        for y in range(self.cursor[0], self.linecnt):
+            line: str = self.rows[y]
+            x = line.find(string, self.cursor[1] + 1 if y == self.cursor[0] else 0  )
+            if (x >= 0):
+                self.cursor = (y, x)
+                return (y, x)
+        return (-1, -1)
 class ScreenFake(ScreenProtocol):
     def __init__(self):
         self.buffer: list[list[str]] = [[ ' ' for _ in range(SCREEN_MAXX) ] for _ in range(SCREEN_MAXY)]
@@ -101,7 +118,7 @@ class ScreenFake(ScreenProtocol):
         
     def getch(self) -> int:
         if not self.inbuf:
-            self.dump()
+            #self.dump()
             raise RuntimeError("Fake input buffer empty")
         ch = self.inbuf.pop(0)
         return ord(ch)

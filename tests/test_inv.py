@@ -23,7 +23,7 @@ catnames = ["cat1", "cat2", "cat3", "cat4", "cat5"]
 typenames = [("type1", 1), ("type2", 2), ("type3", 3), ("type4", 4), ("type5", 5)]
 subtypenames = [("subtype1", 1), ("subtype2", 2), ("subtype3", 3), ("subtype4", 4), ("subtype5", 5)]
 
-# def stuff_cats(db: Database) -> None:
+# def stuff_cat(db: Database) -> None:
 #     try:
 #         for name in catnames:
 #             cat: Category | None = db.add_category(name)
